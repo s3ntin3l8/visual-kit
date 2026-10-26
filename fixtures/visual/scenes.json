@@ -1,0 +1,10 @@
+{
+  "demo": { "start": "node fixtures/serve.mjs", "url": "http://127.0.0.1:4173", "readyOutput": "DEMO_READY", "startTimeoutSec": 30 },
+  "clock": "2026-10-01T09:00:00Z",
+  "scenes": [
+    { "name": "home", "path": "/", "tags": ["check", "audit", "presentation"], "loop": { "tailSec": 1 }, "steps": [{ "click": "#open-menu" }, { "wait": 400 }] },
+    { "name": "menu", "path": "/", "tags": ["check", "presentation"], "steps": [{ "click": "#open-menu" }], "settle": "#menu", "target": "#menu", "padding": 16 },
+    { "name": "list", "path": "/", "tags": ["presentation"], "target": "[data-shot=list]", "emphasis": { "spotlight": "[data-shot=list] .card:first-child" } },
+    { "name": "settings", "path": "/settings.html", "tags": ["check", "audit"] }
+  ]
+}

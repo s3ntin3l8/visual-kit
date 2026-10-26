@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fixture</title>
+<link rel="stylesheet" href="/style.css">
+<header>
+  <h1>Fixture</h1>
+  <a href="/settings.html">Settings</a>
+  <button class="icon" data-testid="unnamed"></button>
+  <button class="primary" id="open-menu">Open menu</button>
+</header>
+<div id="menu" hidden>
+  <div>Case ADV-024-A</div>
+  <div>Case 9418-26</div>
+</div>
+<main data-shot="list" aria-busy="true">
+  <div class="card"><strong>Unterhalt</strong><br><small>Amtsgericht Ingolstadt · 3 F 1221/26</small></div>
+  <div class="card"><strong>Kindesumgang</strong><br><small>Oberlandesgericht München · 2 UF 40/26</small></div>
+  <div class="card"><strong>Kostenfestsetzung</strong><br><small>Landgericht Ingolstadt · 1 O 7/26</small></div>
+</main>
+<script>
+  // The list is "loading" for a moment, like a real app: settle must wait for aria-busy to clear.
+  setTimeout(() => document.querySelector("main").removeAttribute("aria-busy"), 300);
+  document.getElementById("open-menu").addEventListener("click", () => {
+    document.getElementById("menu").hidden = !document.getElementById("menu").hidden;
+  });
+</script>

@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    groups: { github-actions: { patterns: ["*"] } }
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    # playwright moves with the Dockerfile base image and the e2e container tag: bump all three together, by hand.
+    ignore:
+      - dependency-name: "playwright"
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    # The Playwright base image is pinned with package.json's playwright; same reason.
+    ignore:
+      - dependency-name: "mcr.microsoft.com/playwright"

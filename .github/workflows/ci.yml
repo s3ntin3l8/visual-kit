@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:unit
+
+  # The screenshots only mean something in the pinned image: same Chromium, same fonts.
+  # Keep the tag in step with package.json's playwright version and the Dockerfile.
+  e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - run: apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-noto-color-emoji
+      - run: npm ci
+      - run: node --test test/e2e.test.mjs
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - run: docker build -t visual-kit:ci .
+      - name: Smoke test the image
+        run: |
+          docker run --rm visual-kit:ci version
+          docker run --rm -v "$PWD/fixtures:/work/fixtures:ro" -w /work visual-kit:ci validate --config fixtures/visual/scenes.json
+          docker run --rm visual-kit:ci host-files | tar -t | grep -q run.sh
