@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { PNG } from "pngjs";
-import { diffPngs } from "../src/compare.mjs";
+import { compare, diffPngs } from "../src/compare.mjs";
 import { padRect } from "../src/clip.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { lastChangeSeconds, loopEnd } from "../src/freeze.mjs";
@@ -123,4 +123,25 @@ test("diff: different sizes are padded and flagged as resized", () => {
   const d = diffPngs(PNG.sync.write(png(40, 40, [1, 2, 3, 255])), PNG.sync.write(png(40, 60, [1, 2, 3, 255])));
   assert.equal(d.resized, true);
   assert.ok(d.pixels > 0);
+});
+
+test("compare: a route that starts answering with an error is called out, and a missing base page is new", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-cmp-"));
+  const put = (side, file, status) => {
+    const d = path.join(dir, side);
+    mkdirSync(d, { recursive: true });
+    writeFileSync(path.join(d, file), PNG.sync.write(png(20, 20, [9, 9, 9, 255])));
+    const mfile = path.join(d, "metrics.json");
+    const m = existsSync(mfile) ? JSON.parse(readFileSync(mfile, "utf8")) : {};
+    m[file] = { status, axe: [], console: [], overflow: false, unnamed: 0 };
+    writeFileSync(mfile, JSON.stringify(m));
+  };
+  put("base", "a.png", 200);
+  put("head", "a.png", 500);
+  put("base", "b.png", 404); // the page did not exist on the base
+  put("head", "b.png", 200);
+  const s = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "report") });
+  const byFile = Object.fromEntries(s.entries.map((e) => [e.file, e]));
+  assert.ok(byFile["a.png"].health.some((h) => /HTTP 500/.test(h)));
+  assert.equal(byFile["b.png"].result, "new");
 });

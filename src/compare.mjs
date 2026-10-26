@@ -35,6 +35,7 @@ export function diffPngs(baseBuf, headBuf, { threshold = 0.1 } = {}) {
 /** What got worse (or better) between two metrics entries of the same shot. */
 function metricDelta(base = {}, head = {}) {
   const out = [];
+  if ((head.status ?? 200) >= 400 && !((base.status ?? 200) >= 400)) out.push(`HTTP ${head.status} (the base answered ${base.status ?? "n/a"})`);
   const axeOf = (m) => new Map((m.axe ?? []).map((v) => [v.id, v]));
   const baseAxe = axeOf(base);
   for (const [id, v] of axeOf(head)) {

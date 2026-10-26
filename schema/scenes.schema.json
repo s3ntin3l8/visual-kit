@@ -100,7 +100,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "spotlight": { "type": "string", "description": "Selector kept bright while the rest of the page is dimmed." },
+            "spotlight": { "type": "string", "description": "Selector kept bright while the rest of the page is dimmed (a transparent overlay over its box, so the element is not repositioned)." },
             "dim": { "type": "number", "minimum": 0, "maximum": 0.9, "default": 0.55 },
             "css": { "type": "string", "description": "Arbitrary CSS injected before the shot." }
           }

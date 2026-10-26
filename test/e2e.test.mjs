@@ -83,6 +83,21 @@ describe("e2e", () => {
     assert.ok(readdirSync(out).includes("home-dark-mobile.png"));
   });
 
+  test("spotlight dims the page around an absolutely positioned popover and leaves it where it is", async () => {
+    const out = path.join(work, "spot");
+    const r = await capture({ cfg, profile: "audit", baseUrl: "http://127.0.0.1:4173", outDir: out, routes: ["spot-plain", "spot-menu"], log() {} });
+    assert.deepEqual(r.failures, []);
+    const px = (file, x, y) => {
+      const p = PNG.sync.read(readFileSync(path.join(out, file)));
+      const i = (y * p.width + x) * 4;
+      return [p.data[i], p.data[i + 1], p.data[i + 2]];
+    };
+    const plain = "spot-plain.desktop.dark.png";
+    const spot = "spot-menu.desktop.dark.png";
+    assert.deepEqual(px(spot, 1400, 70), px(plain, 1400, 70), "inside the menu: untouched");
+    assert.ok(px(spot, 200, 400)[0] < px(plain, 200, 400)[0], "outside the menu: dimmed");
+  });
+
   test("a failing scene is reported and the others still render", async () => {
     const broken = { ...cfg, scenes: [{ name: "broken", path: "/", viewports: ["desktop"], schemes: ["dark"], steps: [{ click: "#does-not-exist" }] }, cfg.scenes[3]] };
     const r = await capture({ cfg: broken, profile: "check", baseUrl: "http://127.0.0.1:4173", outDir: path.join(work, "broken"), log() {} });

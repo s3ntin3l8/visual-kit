@@ -39,7 +39,7 @@ visual-check: visual/.kit/run.sh ## Before/after of ROUTES against BASE (default
 
 | Target | Renders | Output | Committed |
 | --- | --- | --- | --- |
-| `make screenshots` | scenes tagged `presentation`, README profile | `docs/screenshots/` | yes |
+| `make screenshots` | scenes tagged `presentation`, README profile | `docs/screenshots/` (replaced wholesale) | yes |
 | `make screenshots-landing OUT=dir` | scenes tagged `presentation`, landing profile | `dir/` | by personal-landing |
 | `make screenshots-audit AUDIT=YYYY-MM-<scope>-<topic>` | scenes tagged `audit`, every form factor | `docs/audit/assets/<slug>/` | no |
 | `make visual-check [ROUTES=a,b] [BASE=ref]` | scenes tagged `check`, base vs working tree | `visual/.out/check/` | no |
@@ -97,7 +97,8 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 - **`target`** shoots one element plus `padding` (default 24) at full device scale, instead of the page. This is
   how a landing tile gets a sharp feature shot instead of a crop of a full screenshot. `clip` is a fixed
   rectangle. They are mutually exclusive, and neither combines with `loop`.
-- **`emphasis`** dims everything but a `spotlight` element, or injects `css`.
+- **`emphasis`** dims everything but a `spotlight` element (an overlay over its box, so popovers and other
+  positioned elements stay where they are), or injects `css`.
 - **`hooks.mjs`** may export `beforeScene({context, page, scene, variant, cfg})` (log in, dismiss a banner) and
   `settle({page, scene})` (app-specific readiness, e.g. wait for charts). Throw to fail the scene.
 
@@ -106,6 +107,11 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 Fonts are loaded, nothing is `aria-busy`, the network is idle, animations and transitions are disabled, the
 caret is hidden, reduced motion is on, and `Date` is fixed to `clock`. Anything still volatile goes in `mask`.
 A scene that fails is reported and the others still render; the run exits non-zero.
+
+A `check` renders **both sides with the working tree's `scenes.json` and `hooks.mjs`**, so the comparison
+varies only the app. A scene whose steps need UI the base does not have yet (the new filter you just added)
+fails on the base, which the report shows as **new**; a scene that fails on the working tree fails the check
+after the report is written.
 
 A `check` also records per shot: axe violations (rule, impact, node count), console errors, horizontal
 overflow, and controls without an accessible name. The report shows what changed against the base.

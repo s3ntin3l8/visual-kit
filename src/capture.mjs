@@ -34,16 +34,40 @@ export async function settlePage(page, scene, hooks) {
   if (hooks?.settle) await hooks.settle({ page, scene });
 }
 
+/** Arbitrary CSS from the scene's emphasis, injected before the shot. */
 function emphasisCss(emphasis) {
-  if (!emphasis) return "";
-  const parts = [];
-  if (emphasis.spotlight) {
-    const dim = emphasis.dim ?? 0.55;
-    // A huge spread shadow dims everything around the element without touching layout.
-    parts.push(`${emphasis.spotlight} { position: relative; z-index: 2147483000; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, ${dim}); border-radius: 6px; }`);
-  }
-  if (emphasis.css) parts.push(emphasis.css);
-  return parts.join("\n");
+  return emphasis?.css ?? "";
+}
+
+/**
+ * Dims everything except `selector`: a transparent overlay over the element's box whose huge spread
+ * shadow covers the rest of the document. It is an extra element, so the target keeps its own
+ * positioning (a popover stays where it is) and the overlay sits above the whole page whatever the
+ * stacking context of the target.
+ */
+async function spotlight(page, selector, dim) {
+  await page.evaluate(
+    ({ selector, dim }) => {
+      const el = document.querySelector(selector);
+      if (!el) throw new Error(`spotlight: ${selector} not found`);
+      const r = el.getBoundingClientRect();
+      const overlay = document.createElement("div");
+      overlay.setAttribute("data-visual-kit", "spotlight");
+      Object.assign(overlay.style, {
+        position: "absolute",
+        left: `${r.left + scrollX}px`,
+        top: `${r.top + scrollY}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+        borderRadius: "6px",
+        pointerEvents: "none",
+        zIndex: "2147483647",
+        boxShadow: `0 0 0 100vmax rgba(0, 0, 0, ${dim})`,
+      });
+      document.body.append(overlay);
+    },
+    { selector, dim },
+  );
 }
 
 async function newContext(browser, cfg, variant, extra = {}) {
@@ -90,6 +114,7 @@ async function openScene({ context, cfg, scene, variant, hooks, baseUrl }) {
 async function shoot(page, scene, variant, fullPage, cfg, outFile) {
   const css = emphasisCss(scene.emphasis);
   if (css) await page.addStyleTag({ content: css });
+  if (scene.emphasis?.spotlight) await spotlight(page, scene.emphasis.spotlight, scene.emphasis.dim ?? 0.55);
   const mask = [...(cfg.mask ?? []), ...(scene.mask ?? [])].map((sel) => page.locator(sel));
   const options = { path: outFile, animations: "disabled", caret: "hide", mask, maskColor: "#ff00ff" };
   if (scene.target) {

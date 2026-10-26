@@ -88,17 +88,21 @@ case "$MODE" in
     start_demo "$ROOT"; capture readme "$(realpath -m "${OUT:-docs/screenshots}")" ;;
   audit)
     [ -n "$SLUG" ] || die "audit needs --slug YYYY-MM-<scope>-<topic>"
+    [[ "$SLUG" =~ ^[0-9]{4}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "slug must look like YYYY-MM-<scope>-<topic>, got \"$SLUG\""
     start_demo "$ROOT"; capture audit "$ROOT/docs/audit/assets/$SLUG" ;;
   check)
     OUT=$(realpath -m "${OUT:-visual/.out/check}")
     MERGE_BASE=$(git merge-base HEAD "$BASE_REF") || die "no merge base with $BASE_REF (git fetch origin?)"
     IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")
-    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "${DEMO_NOW:-}" | sha256sum | cut -c1-16)
+    HOOKS="$(dirname "$CONFIG")/hooks.mjs"
+    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" | sha256sum | cut -c1-16)
     CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")/$KEY"
     if [ "$FRESH" = 1 ] || [ ! -d "$CACHE/shots" ]; then
       echo "visual-kit: capturing the base ($(git rev-parse --short "$MERGE_BASE"), merge-base with $BASE_REF)"
       WORKTREE="$CACHE.wt"
       mkdir -p "$(dirname "$WORKTREE")"
+      # A SIGKILLed earlier run leaves its worktree behind; clear it so this one can start.
+      git worktree prune; rm -rf "$WORKTREE"
       git worktree add --detach --force "$WORKTREE" "$MERGE_BASE" >/dev/null
       for dep in $BASE_DEPS; do
         [ -e "$ROOT/$dep" ] || continue
@@ -106,7 +110,11 @@ case "$MODE" in
         [ -e "$WORKTREE/$dep" ] || ln -s "$ROOT/$dep" "$WORKTREE/$dep"
       done
       start_demo "$WORKTREE"
-      rm -rf "$CACHE/shots"; capture check "$CACHE/shots"
+      # Scenes are read from the working tree's config, so one that needs a selector the base does not have
+      # yet fails here. That is expected for new UI: it shows up as "new" in the report.
+      rm -rf "$CACHE/shots"
+      capture check "$CACHE/shots" || echo "visual-kit: some scenes failed on the base; they will show as new" >&2
+      mkdir -p "$CACHE/shots"
       stop_demo
       git worktree remove --force "$WORKTREE"; WORKTREE=""
     else
@@ -114,10 +122,13 @@ case "$MODE" in
     fi
     echo "visual-kit: capturing the working tree"
     start_demo "$ROOT"
-    rm -rf "$OUT/head"; capture check "$OUT/head"
+    rm -rf "$OUT/head"
+    HEAD_RC=0; capture check "$OUT/head" || HEAD_RC=$?
     stop_demo
     rm -rf "$OUT/base"; cp -R "$CACHE/shots" "$OUT/base"
     kit "$OUT" compare --base /out/base --head /out/head --out /out/report
     echo "visual-kit: report at ${OUT#"$ROOT"/}/report/index.html (summary: ${OUT#"$ROOT"/}/report/summary.md)"
+    # The report exists even when a scene failed on the working tree, but the failure is not forgotten.
+    [ "$HEAD_RC" = 0 ] || die "some scenes failed to render on the working tree (see above)"
     ;;
 esac
