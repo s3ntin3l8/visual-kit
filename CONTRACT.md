@@ -3,6 +3,9 @@
 This is the one place the spec lives. Every repo that uses visual-kit, and
 [personal-landing](https://github.com/s3ntin3l8/personal-landing) which pulls from them, relies on it.
 
+**Host requirements:** bash, git, docker and GNU coreutils (`realpath -m`, `sha256sum`); `flock` is optional but
+recommended (it keeps two checks from colliding). Linux; macOS needs coreutils and `--network host` support.
+
 ## What a repo provides
 
 1. **A demo**: one command (`make demo`) that boots an isolated, seeded instance on a loopback port and
@@ -23,16 +26,16 @@ visual/.kit/run.sh: visual/Dockerfile
 	mkdir -p visual/.kit && docker run --rm $(VISUAL_IMAGE) host-files | tar -x -C visual/.kit
 
 screenshots: visual/.kit/run.sh ## README screenshots into docs/screenshots (committed)
-	$(VISUAL_RUN) readme
+	$(VISUAL_RUN) readme $(if $(FORCE),--force)
 
 screenshots-landing: visual/.kit/run.sh ## Landing stills and loops into OUT
-	$(VISUAL_RUN) landing --out "$(or $(OUT),landing-shots)"
+	$(VISUAL_RUN) landing --out "$(or $(OUT),landing-shots)" $(if $(FORCE),--force)
 
 screenshots-audit: visual/.kit/run.sh ## Audit evidence into docs/audit/assets/$(AUDIT) (local only)
-	$(VISUAL_RUN) audit --slug "$(AUDIT)"
+	$(VISUAL_RUN) audit --slug "$(AUDIT)" $(if $(FORCE),--force)
 
 visual-check: visual/.kit/run.sh ## Before/after of ROUTES against BASE (default origin/main)
-	$(VISUAL_RUN) check $(if $(ROUTES),--routes "$(ROUTES)") $(if $(BASE),--base "$(BASE)")
+	$(VISUAL_RUN) check $(if $(ROUTES),--routes "$(ROUTES)") $(if $(BASE),--base "$(BASE)") $(if $(FORCE),--force)
 ```
 
 ## Targets
@@ -117,7 +120,8 @@ A scene that fails is reported and the others still render; the run exits non-ze
 at the end. If any scene failed, a presentation or audit run leaves the previous output untouched (a flaky scene
 must never delete a committed screenshot); only a `check` publishes a partial set, because the other side
 compares whatever rendered. A folder is replaced only if it is empty or carries the `.visual-kit` marker the
-tool wrote; anything else needs `--force` once (the first `make screenshots` over hand-made screenshots). The
+tool wrote; anything else needs `--force` once (`make screenshots FORCE=1` the first time over hand-made screenshots). The
+check's `--out` folder and its `base/`, `head/` and `report/` follow the same rule. The
 launcher refuses an output that is the repository, one of its parents, or inside `.git`. A loop is
 `webm` + `mp4` + `jpg` or nothing, and a missing ffmpeg fails the run instead of dropping the loop silently.
 

@@ -177,10 +177,11 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
           if (typeof scene.settle === "number") await page.waitForTimeout(scene.settle);
           else if (scene.settle) await page.waitForSelector(scene.settle, { state: "visible" });
           if (scene.steps?.length || scene.settle !== undefined) await settlePage(page, scene, hooks);
-          await shoot(page, scene, variant, profile.fullPage, cfg, path.join(stage, variant.file));
+          // Measured before the shot: a spotlight overlay or injected CSS is decoration, not the page.
           if (profileName === "check" || profileName === "audit") {
             metrics[variant.file] = { status: response?.status() ?? 0, ...(await pageMetrics(page)), console: consoleErrors };
           }
+          await shoot(page, scene, variant, profile.fullPage, cfg, path.join(stage, variant.file));
           files.push(variant.file);
           log(`  ok  ${label}`);
         } catch (err) {

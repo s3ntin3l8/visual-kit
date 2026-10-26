@@ -7,6 +7,7 @@
 # An output folder is replaced wholesale, so it must be one this tool wrote (it leaves a .visual-kit file),
 # an empty one, or --force. It can never be the repository, one of its parents, or inside .git.
 #
+# Needs bash, git, docker and GNU coreutils (realpath -m, sha256sum); flock is optional but recommended.
 # Environment: VISUAL_KIT_IMAGE (required, set by the Makefile), VISUAL_CONFIG (default visual/scenes.json).
 set -euo pipefail
 
@@ -32,6 +33,16 @@ IMAGE=${VISUAL_KIT_IMAGE:?VISUAL_KIT_IMAGE is not set}
 ROOT=$(git rev-parse --show-toplevel)
 CONFIG=${VISUAL_CONFIG:-visual/scenes.json}
 cd "$ROOT"
+
+# A folder this tool writes into and later replaces: empty, or carrying its marker, or --force.
+claim_dir() {
+  local dir=$1
+  if [ -d "$dir" ] && [ ! -e "$dir/.visual-kit" ] && [ -n "$(ls -A "$dir")" ] && [ "$FORCE" != 1 ]; then
+    die "$dir exists, is not empty and was not written by visual-kit; refusing to use it (pass --force to allow it once)"
+  fi
+  mkdir -p "$dir"
+  printf 'visual-kit output: this folder is replaced wholesale on every run\n' >"$dir/.visual-kit"
+}
 
 # Refuse an output path that would take the checkout (or its parents) with it.
 check_out() {
@@ -108,6 +119,7 @@ case "$MODE" in
   check)
     check_out "${OUT:-visual/.out/check}"
     OUT=$(realpath -m "${OUT:-visual/.out/check}")
+    claim_dir "$OUT"
     MERGE_BASE=$(git merge-base HEAD "$BASE_REF") || die "no merge base with $BASE_REF (git fetch origin?)"
     IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")
     HOOKS="$(dirname "$CONFIG")/hooks.mjs"
@@ -119,6 +131,8 @@ case "$MODE" in
     if command -v flock >/dev/null; then
       exec 9>"$CACHE_ROOT/lock"
       flock -n 9 || die "another visual check is running in this checkout"
+    else
+      echo "visual-kit: flock not found; two checks at once in this checkout would collide (cache, worktree, demo port)" >&2
     fi
     if [ "$FRESH" = 1 ] || [ ! -d "$CACHE/shots" ]; then
       echo "visual-kit: capturing the base ($(git rev-parse --short "$MERGE_BASE"), merge-base with $BASE_REF)"
