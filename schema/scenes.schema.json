@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/s3ntin3l8/visual-kit/schema/scenes.schema.json",
+  "title": "visual-kit scenes",
+  "type": "object",
+  "required": ["demo", "scenes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "demo": {
+      "type": "object",
+      "required": ["start", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "string", "minLength": 1, "description": "Shell command that boots the isolated demo (e.g. `make demo`)." },
+        "url": { "type": "string", "pattern": "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:\\d+)?(/.*)?$", "description": "Loopback URL the demo serves on." },
+        "readyOutput": { "type": "string", "default": "DEMO_READY", "description": "Regex to wait for in the start command's output." },
+        "startTimeoutSec": { "type": "integer", "minimum": 5, "default": 300 },
+        "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Extra environment for the start command (e.g. DEMO_NOW)." }
+      }
+    },
+    "baseDeps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Untracked dependency folders symlinked into the base worktree of a visual check (e.g. .venv, frontend/node_modules)."
+    },
+    "clock": { "type": "string", "description": "Fixed browser time (Date.now / new Date). Pair it with the demo's own DEMO_NOW." },
+    "locale": { "type": "string" },
+    "storageState": { "type": "string", "description": "Path (relative to the repo) of a logged-in Playwright storage state." },
+    "mask": { "type": "array", "items": { "type": "string" }, "description": "Selectors painted over in every shot (timestamps, avatars, anything volatile)." },
+    "viewports": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["width", "height"],
+        "additionalProperties": false,
+        "properties": {
+          "width": { "type": "integer", "minimum": 200 },
+          "height": { "type": "integer", "minimum": 200 },
+          "scale": { "type": "number", "minimum": 1, "maximum": 4 },
+          "mobile": { "type": "boolean" }
+        }
+      },
+      "description": "Overrides or adds to the profile's viewports, by name."
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/scene" }
+    }
+  },
+  "definitions": {
+    "step": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 2,
+      "additionalProperties": false,
+      "properties": {
+        "click": { "type": "string" },
+        "hover": { "type": "string" },
+        "fill": { "type": "string" },
+        "value": { "type": "string" },
+        "press": { "type": "string" },
+        "waitFor": { "type": "string" },
+        "wait": { "type": "integer", "minimum": 0, "maximum": 5000 }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": ["name", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "path": { "type": "string", "pattern": "^/(?![/\\\\])", "description": "Path on the demo; // and /\\ would leave it." },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["presentation", "check", "audit"] },
+          "description": "Which workflows include the scene. Default: check and audit."
+        },
+        "viewports": { "type": "array", "items": { "type": "string" }, "description": "Limit the scene to these viewport names." },
+        "schemes": { "type": "array", "items": { "enum": ["light", "dark"] }, "description": "Limit the scene to these colour schemes." },
+        "steps": { "type": "array", "items": { "$ref": "#/definitions/step" } },
+        "settle": {
+          "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "integer", "minimum": 0, "maximum": 5000 }],
+          "description": "Selector to wait for (or ms) after the steps, before the shot."
+        },
+        "localStorage": { "type": "object", "additionalProperties": { "type": "string" } },
+        "target": { "type": "string", "description": "Selector: shoot this element (plus padding) instead of the page." },
+        "clip": {
+          "type": "object",
+          "required": ["x", "y", "width", "height"],
+          "additionalProperties": false,
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" } }
+        },
+        "padding": { "type": "integer", "minimum": 0, "maximum": 200, "default": 24 },
+        "fullPage": { "type": "boolean", "description": "Default: true for check and audit, false for presentation." },
+        "mask": { "type": "array", "items": { "type": "string" } },
+        "emphasis": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "spotlight": { "type": "string", "description": "Selector kept bright while the rest of the page is dimmed (a transparent overlay over its box, so the element is not repositioned)." },
+            "dim": { "type": "number", "minimum": 0, "maximum": 0.9, "default": 0.55 },
+            "css": { "type": "string", "description": "Arbitrary CSS injected before the shot." }
+          }
+        },
+        "loop": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "tailSec": { "type": "number", "minimum": 0, "maximum": 10, "default": 1.5 } },
+          "description": "Record the steps as a silent loop (webm + mp4 + jpg poster) for the landing and README profiles."
+        }
+      }
+    }
+  }
+}

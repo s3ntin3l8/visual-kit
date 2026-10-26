@@ -1,0 +1,26 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '37 1 * * 4'
+
+concurrency:
+  # The event name is part of the group: a `schedule` run and a `push` to
+  # `main` share `github.ref`, so without it the weekly scan and a push
+  # land in the same group and the newer cancels the older.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: s3ntin3l8/.github/.github/workflows/codeql.yml@bd7f8eaa4f2e212185e042472ec790f13374ce1f # main
+    with:
+      languages: '"javascript-typescript"'
