@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -6,6 +6,7 @@ import { PROFILES, selectScenes, variants } from "./profiles.mjs";
 import { padRect } from "./clip.mjs";
 import { pageMetrics } from "./metrics.mjs";
 import { recordLoop } from "./loop.mjs";
+import { MARKER, guardReplace } from "./output.mjs";
 
 const STEP_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 30_000;
@@ -165,7 +166,9 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   const failures = [];
   try {
     for (const scene of scenes) {
-      for (const variant of variants(cfg, profileName, scene)) {
+      const todo = variants(cfg, profileName, scene);
+      if (!todo.length && !(profile.loops && scene.loop)) log(`  skip ${scene.name}: none of its viewports/schemes belong to the ${profileName} profile`);
+      for (const variant of todo) {
         const label = `${scene.name} (${variant.vp}, ${variant.scheme})`;
         const context = await newContext(browser, cfg, variant);
         try {
@@ -209,6 +212,9 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   // partial output is useful. Everything else is a deliverable: a partial set must never replace a
   // complete one, so on any failure the previous output stays untouched.
   const publishPartial = profileName === "check";
+  // Nothing rendered is a failure of its own (every scene filtered out, a typo): never publish it over a
+  // complete set.
+  if (!files.length && !failures.length) failures.push(`nothing was rendered for the ${profileName} profile (check the scenes' viewports, schemes and tags)`);
   if (failures.length && (!publishPartial || !files.length)) {
     rmSync(stage, { recursive: true, force: true });
     if (!publishPartial) log(`  output left untouched: ${path.relative(process.cwd(), outDir) || outDir}`);
@@ -220,13 +226,4 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   mkdirSync(path.dirname(outDir), { recursive: true });
   renameSync(stage, outDir);
   return { files, metrics, failures };
-}
-
-export const MARKER = ".visual-kit";
-
-/** Replacing a folder is only for folders this tool wrote (or empty ones); anything else needs VISUAL_KIT_FORCE=1. */
-function guardReplace(outDir) {
-  if (!existsSync(outDir) || process.env.VISUAL_KIT_FORCE === "1") return;
-  if (existsSync(path.join(outDir, MARKER)) || readdirSync(outDir).length === 0) return;
-  throw new Error(`${outDir} exists, is not empty and was not written by visual-kit; refusing to replace it (pass --force to allow it once)`);
 }

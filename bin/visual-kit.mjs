@@ -63,7 +63,9 @@ async function main() {
     }
     case "compare": {
       if (!values.base || !values.head || !values.out) throw new Error("compare needs --base, --head and --out");
-      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), maxDiffPixels: Number(values["max-diff-pixels"]) });
+      const maxDiffPixels = Number(values["max-diff-pixels"]);
+      if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
+      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), maxDiffPixels });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
       return values["fail-on-diff"] && (s.changed || s.removed) ? 2 : 0;
     }

@@ -45,7 +45,8 @@ export async function recordLoop({ browser, cfg, scene, profile, profileName, ba
       await context.close(); // finalises the video file
     }
 
-    const [raw] = readdirSync(videoDir);
+    const raw = readdirSync(videoDir).find((f) => f.endsWith(".webm"));
+    if (!raw) throw new Error(`${scene.name}: the browser wrote no recording`);
     const src = path.join(videoDir, raw);
     const base = path.join(outDir, scene.name);
     const end = loopEnd(videoLastChange(src), offset, tailSec);

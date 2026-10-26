@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import path from "node:path";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
+import { MARKER, guardReplace } from "./output.mjs";
 
 const pngs = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".png")).sort() : []);
 const readMetrics = (dir) => (existsSync(path.join(dir, "metrics.json")) ? JSON.parse(readFileSync(path.join(dir, "metrics.json"), "utf8")) : {});
@@ -61,8 +62,10 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
  * index.html (base / head / diff side by side), summary.json and summary.md.
  */
 export function compare({ baseDir, headDir, outDir, threshold = 0.1, maxDiffPixels = 20 }) {
+  guardReplace(outDir);
   rmSync(outDir, { recursive: true, force: true });
   for (const sub of ["base", "head", "diff"]) mkdirSync(path.join(outDir, sub), { recursive: true });
+  writeFileSync(path.join(outDir, MARKER), "visual-kit output: this folder is replaced wholesale on every run\n");
 
   const baseFiles = pngs(baseDir);
   const headFiles = pngs(headDir);
@@ -75,7 +78,8 @@ export function compare({ baseDir, headDir, outDir, threshold = 0.1, maxDiffPixe
     const missingInBase = !baseFiles.includes(file) || (baseMetrics[file]?.status >= 400 && !(headMetrics[file]?.status >= 400));
     const health = metricDelta(missingInBase ? {} : baseMetrics[file], headMetrics[file]);
     if (missingInBase) {
-      entries.push({ file, result: "new", pixels: 0, health: [] });
+      // A new route is where a check matters most: its findings are the whole story, not a delta.
+      entries.push({ file, result: "new", pixels: 0, health });
       continue;
     }
     copyFileSync(path.join(baseDir, file), path.join(outDir, "base", file));

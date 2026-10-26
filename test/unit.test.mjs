@@ -182,3 +182,23 @@ test("compare: console text cannot break the markdown table", () => {
   assert.ok(md.includes("bad \\| pipe and newline"));
   assert.equal(s.entries[0].health.length, 1);
 });
+
+test("config: an unknown viewport name is refused (a typo must not make a scene render nothing)", () => {
+  assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", viewports: ["mobil"] }] })), /unknown viewport "mobil"/);
+  assert.doesNotThrow(() => loadConfig(config({ viewports: { wide: { width: 2000, height: 1000 } }, scenes: [{ name: "a", path: "/", viewports: ["wide"] }] })));
+});
+
+test("compare: a new shot keeps its own findings, and a folder the tool did not write is not deleted", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-new-"));
+  mkdirSync(path.join(dir, "base"));
+  mkdirSync(path.join(dir, "head"));
+  writeFileSync(path.join(dir, "head", "b.png"), PNG.sync.write(png(10, 10, [1, 1, 1, 255])));
+  writeFileSync(path.join(dir, "head", "metrics.json"), JSON.stringify({ "b.png": { status: 200, axe: [{ id: "color-contrast", impact: "serious", nodes: 3 }], console: ["boom"], overflow: true, unnamed: 2 } }));
+  const s = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "report") });
+  assert.equal(s.entries[0].result, "new");
+  assert.ok(s.entries[0].health.length >= 3, "axe, console and overflow are reported for a new route");
+  mkdirSync(path.join(dir, "mine"));
+  writeFileSync(path.join(dir, "mine", "precious.txt"), "x");
+  assert.throws(() => compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "mine") }), /not written by visual-kit/);
+  assert.equal(readFileSync(path.join(dir, "mine", "precious.txt"), "utf8"), "x");
+});

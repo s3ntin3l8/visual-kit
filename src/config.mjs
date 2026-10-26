@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
+import { PROFILES } from "./profiles.mjs";
 
 const schema = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../schema/scenes.schema.json"), "utf8"));
 const validateSchema = new Ajv({ allErrors: true, strict: false }).compile(schema);
@@ -29,6 +30,7 @@ export function loadConfig(file) {
 function semanticProblems(cfg) {
   const out = [];
   if (cfg.clock !== undefined && Number.isNaN(Date.parse(cfg.clock))) out.push(`clock "${cfg.clock}" is not a date-time (use e.g. 2026-10-01T09:00:00Z)`);
+  const knownViewports = new Set([...Object.values(PROFILES).flatMap((p) => Object.keys(p.viewports)), ...Object.keys(cfg.viewports ?? {})]);
   const seen = new Set();
   cfg.scenes.forEach((scene, i) => {
     const where = `scenes[${i}] (${scene.name})`;
@@ -40,6 +42,9 @@ function semanticProblems(cfg) {
       else if (actions[0] === "fill" && typeof step.value !== "string") out.push(`${where}.steps[${j}]: fill needs a "value"`);
       else if (actions[0] !== "fill" && "value" in step) out.push(`${where}.steps[${j}]: "value" belongs to fill only`);
     });
+    for (const vp of scene.viewports ?? []) {
+      if (!knownViewports.has(vp)) out.push(`${where}: unknown viewport "${vp}" (known: ${[...knownViewports].join(", ")})`);
+    }
     if (scene.target && scene.clip) out.push(`${where}: use either target or clip, not both`);
     if (scene.loop && (scene.target || scene.clip)) out.push(`${where}: a loop records the whole viewport; drop target/clip`);
     if (scene.emphasis?.spotlight && scene.emphasis.css) out.push(`${where}: emphasis takes spotlight or css, not both`);

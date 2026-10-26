@@ -111,6 +111,17 @@ describe("e2e", () => {
     assert.ok(!existsSync(`${out}.staging`));
   });
 
+  test("a run that renders nothing never replaces a complete output", async () => {
+    const out = path.join(work, "nothing");
+    await capture({ cfg, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, log() {} });
+    const before = readdirSync(out).sort();
+    // Light-only scenes belong to no landing variant (landing is dark only): zero variants, zero files.
+    const light = { ...cfg, scenes: cfg.scenes.map((s) => ({ ...s, schemes: ["light"], loop: undefined })) };
+    const r = await capture({ cfg: light, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, log() {} });
+    assert.ok(r.failures.some((f) => /nothing was rendered/.test(f)));
+    assert.deepEqual(readdirSync(out).sort(), before);
+  });
+
   test("a folder the tool did not write is not replaced without --force", async () => {
     const out = path.join(work, "handmade");
     mkdirSync(out);
