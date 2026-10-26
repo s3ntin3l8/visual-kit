@@ -9,8 +9,8 @@ updates:
     schedule: { interval: "weekly" }
     # eslint, @eslint/js and globals move together (a major of one needs the others): one PR, not three.
     groups:
-      dev-dependencies:
-        dependency-type: "development"
+      eslint:
+        patterns: ["eslint", "@eslint/js", "globals"]
     # playwright moves with the Dockerfile base image and the e2e container tag: bump all three together, by hand.
     ignore:
       - dependency-name: "playwright"
