@@ -216,5 +216,5 @@ test("compare: controls past the viewport edge are called out when they increase
   assert.ok(s.entries[0].health.some((h) => /controls past the viewport edge: 0 → 2 \(select#proceeding, button\.save\)/.test(h)));
   // and the other way round: a fix is reported too
   const fixed = compare({ baseDir: path.join(dir, "head"), headDir: path.join(dir, "base"), outDir: path.join(dir, "r2") });
-  assert.ok(fixed.entries[0].health.some((h) => /controls past the viewport edge fixed: 2 → 0/.test(h)));
+  assert.ok(fixed.entries[0].health.some((h) => /controls past the viewport edge fixed: 2 → 0 \(was select#proceeding, button\.save\)/.test(h)));
 });

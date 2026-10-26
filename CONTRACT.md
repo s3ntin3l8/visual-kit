@@ -134,7 +134,7 @@ fails on the base, which the report shows as **new**; a scene that fails on the 
 after the report is written.
 
 A `check` (and an `audit`) also records per shot: axe violations (rule, impact, node count), console errors, horizontal
-overflow, controls cut off at the viewport edge (outside a horizontal scroller and not `aria-hidden`/`inert`; an `overflow: hidden` ancestor hides them from the overflow check), and controls without an accessible name. The report shows what changed against the base.
+overflow, controls cut off at the viewport edge (the first clipping ancestor decides: a horizontal scroller lets the user reach the control, an `overflow: hidden|clip` ancestor whose edge it passes swallows it even inside a scroller further up, which `overflow` alone cannot see; `aria-hidden`/`inert` controls are skipped), and controls without an accessible name (a select's option text and a textarea's initial value are not a name). The report shows what changed against the base.
 
 ## What personal-landing validates
 

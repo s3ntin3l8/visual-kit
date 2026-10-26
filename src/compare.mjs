@@ -54,7 +54,7 @@ function metricDelta(base = {}, head = {}) {
   if ((head.offscreen ?? 0) > (base.offscreen ?? 0)) {
     out.push(`controls past the viewport edge: ${base.offscreen ?? 0} → ${head.offscreen} (${(head.offscreenSample ?? []).join(", ")})`);
   }
-  if ((head.offscreen ?? 0) < (base.offscreen ?? 0)) out.push(`controls past the viewport edge fixed: ${base.offscreen} → ${head.offscreen ?? 0}`);
+  if ((head.offscreen ?? 0) < (base.offscreen ?? 0)) out.push(`controls past the viewport edge fixed: ${base.offscreen} → ${head.offscreen ?? 0} (was ${(base.offscreenSample ?? []).join(", ")})`);
   if ((head.unnamed ?? 0) > (base.unnamed ?? 0)) out.push(`unnamed controls: ${base.unnamed ?? 0} → ${head.unnamed}`);
   return out;
 }

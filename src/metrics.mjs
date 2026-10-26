@@ -31,7 +31,9 @@ function inPage() {
     for (let p = el.parentElement; p; p = p.parentElement) {
       const o = getComputedStyle(p).overflowX;
       if (o === "auto" || o === "scroll") return false;
-      if ((o === "hidden" || o === "clip") && right > p.getBoundingClientRect().right + 1) return true;
+      // `overflow` clips at the padding edge, inside the ancestor's border.
+      const clipEdge = p.getBoundingClientRect().right - parseFloat(getComputedStyle(p).borderRightWidth || "0");
+      if ((o === "hidden" || o === "clip") && right > clipEdge + 1) return true;
     }
     return true;
   };
