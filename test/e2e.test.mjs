@@ -137,6 +137,18 @@ describe("e2e", () => {
     assert.ok(!existsSync(path.join(out, "precious.png")));
   });
 
+  test("a control cut off at the viewport edge is found even though the page never scrolls", async () => {
+    const out = path.join(work, "wide");
+    const r = await capture({ cfg, profile: "audit", baseUrl: "http://127.0.0.1:4173", outDir: out, routes: ["wide"], log() {} });
+    assert.deepEqual(r.failures, []);
+    const m = r.metrics;
+    assert.equal(m["wide.phone.dark.png"].overflow, false, "the document itself does not scroll");
+    assert.equal(m["wide.phone.dark.png"].offscreen, 2, "the clipped select and the one a clipping card holds inside a scroll row, not the scroller's button or the hidden drawer");
+    assert.deepEqual(m["wide.phone.dark.png"].offscreenSample, ["select#clipped", "select#clipped-in-row"]);
+    assert.deepEqual(m["wide.phone.dark.png"].unnamedSample, ["select#unnamed"], "option text does not name a select");
+    assert.equal(m["wide.desktop.dark.png"].offscreen, 0, "it fits on a desktop");
+  });
+
   test("a failing scene is reported and the others still render", async () => {
     const broken = { ...cfg, scenes: [{ name: "broken", path: "/", viewports: ["desktop"], schemes: ["dark"], steps: [{ click: "#does-not-exist" }] }, cfg.scenes[3]] };
     const r = await capture({ cfg: broken, profile: "check", baseUrl: "http://127.0.0.1:4173", outDir: path.join(work, "broken"), log() {} });

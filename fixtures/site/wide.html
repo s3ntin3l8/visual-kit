@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wide</title>
+<link rel="stylesheet" href="/style.css">
+<header><h1>Wide</h1><a href="/">Home</a></header>
+<main>
+  <!-- Cut off on a phone, and the page never scrolls: the ancestor swallows it. -->
+  <div style="overflow: hidden; width: 100%">
+    <select id="clipped" aria-label="Proceeding" style="margin-left: 300px; width: 400px"><option>Amtsgericht Hamburg · 003 F 426/25 (26)</option></select>
+  </div>
+  <!-- Meant to be reached by scrolling: not a finding. -->
+  <div style="overflow-x: auto; width: 100%">
+    <button id="scrolled" style="margin-left: 900px">Far right</button>
+  </div>
+  <!-- A scroll row holding a clipping card: scrolling the row never reveals the select, so it is a finding. -->
+  <div style="overflow-x: auto; width: 100%">
+    <div style="overflow: hidden; width: 200px">
+      <select id="clipped-in-row" aria-label="Court" style="margin-left: 300px; width: 400px"><option>Landgericht Ingolstadt</option></select>
+    </div>
+  </div>
+  <!-- Named by a label, and not named at all (its option text is not a name). -->
+  <label for="named">Case</label> <select id="named"><option>ADV-024-A</option></select>
+  <select id="unnamed"><option>ADV-024-A</option></select>
+  <!-- A closed off-canvas drawer: not on screen. -->
+  <nav aria-hidden="true" style="position: fixed; top: 0; left: 100%"><button>Hidden</button></nav>
+</main>

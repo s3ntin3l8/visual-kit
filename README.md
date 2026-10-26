@@ -7,7 +7,7 @@ Three jobs, one foundation:
 - **Presentation**: curated scenes for the README and for a personal landing page (stills, sharp section
   shots, short silent loops), regenerated whenever the UI changes.
 - **Visual check**: for every UI change, render the touched routes on the merge base and on the working tree
-  in the same image, and diff them (plus axe, console errors, overflow, unnamed controls).
+  in the same image, and diff them (plus axe, console errors, overflow, cut-off controls, unnamed controls).
 - **Audit**: every route in every form factor, as evidence for a periodic audit.
 
 Free and self-hosted: Playwright, a pinned Chromium and fonts, `pixelmatch`, ffmpeg. No service, no account.
