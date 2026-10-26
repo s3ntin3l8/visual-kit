@@ -51,6 +51,9 @@ function metricDelta(base = {}, head = {}) {
   for (const line of head.console ?? []) if (!baseConsole.has(line)) out.push(`new console error: ${line.slice(0, 160)}`);
   if (head.overflow && !base.overflow) out.push("horizontal overflow introduced");
   if (!head.overflow && base.overflow) out.push("horizontal overflow fixed");
+  if ((head.offscreen ?? 0) > (base.offscreen ?? 0)) {
+    out.push(`controls past the viewport edge: ${base.offscreen ?? 0} → ${head.offscreen} (${(head.offscreenSample ?? []).join(", ")})`);
+  }
   if ((head.unnamed ?? 0) > (base.unnamed ?? 0)) out.push(`unnamed controls: ${base.unnamed ?? 0} → ${head.unnamed}`);
   return out;
 }

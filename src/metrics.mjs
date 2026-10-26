@@ -15,14 +15,30 @@ function inPage() {
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
   };
-  const controls = [...document.querySelectorAll("button, [role=button], a[href], input:not([type=hidden])")].filter(visible);
-  const labelled = (el) => el.tagName === "INPUT" && (el.labels?.length || el.getAttribute("placeholder"));
+  const controls = [...document.querySelectorAll("button, [role=button], a[href], select, textarea, input:not([type=hidden])")].filter(visible);
+  const labelled = (el) => ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName) && (el.labels?.length || el.getAttribute("placeholder"));
   const unnamed = controls.filter((el) => !hasName(el) && !labelled(el));
   const root = document.documentElement;
+  // A control whose right edge is past the viewport is cut off even when the page never scrolls (an
+  // `overflow: hidden` ancestor swallows it), which `overflow` alone cannot see. Controls inside a
+  // horizontal scroller are meant to be reached by scrolling, and anything inert or aria-hidden (a closed
+  // off-canvas drawer) is not on screen.
+  const inScroller = (el) => {
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const o = getComputedStyle(p).overflowX;
+      if (o === "auto" || o === "scroll") return true;
+    }
+    return false;
+  };
+  const hiddenByAttr = (el) => Boolean(el.closest('[aria-hidden="true"], [inert], [hidden]'));
+  const past = controls.filter((el) => el.getBoundingClientRect().right > root.clientWidth + 1 && !inScroller(el) && !hiddenByAttr(el));
+  const label = (el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${el.className && typeof el.className === "string" ? `.${el.className.trim().split(/\s+/)[0]}` : ""}`;
   return {
     overflow: root.scrollWidth > root.clientWidth + 1,
     unnamed: unnamed.length,
-    unnamedSample: unnamed.slice(0, 5).map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${el.className && typeof el.className === "string" ? `.${el.className.trim().split(/\s+/)[0]}` : ""}`),
+    unnamedSample: unnamed.slice(0, 5).map(label),
+    offscreen: past.length,
+    offscreenSample: past.slice(0, 5).map(label),
   };
 }
 

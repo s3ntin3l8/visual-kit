@@ -202,3 +202,16 @@ test("compare: a new shot keeps its own findings, and a folder the tool did not 
   assert.throws(() => compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "mine") }), /not written by visual-kit/);
   assert.equal(readFileSync(path.join(dir, "mine", "precious.txt"), "utf8"), "x");
 });
+
+test("compare: controls past the viewport edge are called out when they increase", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-off-"));
+  for (const side of ["base", "head"]) {
+    mkdirSync(path.join(dir, side));
+    writeFileSync(path.join(dir, side, "a.png"), PNG.sync.write(png(10, 10, [1, 1, 1, 255])));
+  }
+  const entry = (offscreen, sample) => ({ "a.png": { status: 200, axe: [], console: [], overflow: false, unnamed: 0, offscreen, offscreenSample: sample } });
+  writeFileSync(path.join(dir, "base", "metrics.json"), JSON.stringify(entry(0, [])));
+  writeFileSync(path.join(dir, "head", "metrics.json"), JSON.stringify(entry(2, ["select#proceeding", "button.save"])));
+  const s = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "r") });
+  assert.ok(s.entries[0].health.some((h) => /controls past the viewport edge: 0 → 2 \(select#proceeding, button\.save\)/.test(h)));
+});

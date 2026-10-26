@@ -134,7 +134,7 @@ fails on the base, which the report shows as **new**; a scene that fails on the 
 after the report is written.
 
 A `check` (and an `audit`) also records per shot: axe violations (rule, impact, node count), console errors, horizontal
-overflow, and controls without an accessible name. The report shows what changed against the base.
+overflow, controls cut off at the viewport edge (outside a horizontal scroller and not `aria-hidden`/`inert`; an `overflow: hidden` ancestor hides them from the overflow check), and controls without an accessible name. The report shows what changed against the base.
 
 ## What personal-landing validates
 
