@@ -13,6 +13,15 @@
   <div style="overflow-x: auto; width: 100%">
     <button id="scrolled" style="margin-left: 900px">Far right</button>
   </div>
+  <!-- A scroll row holding a clipping card: scrolling the row never reveals the select, so it is a finding. -->
+  <div style="overflow-x: auto; width: 100%">
+    <div style="overflow: hidden; width: 200px">
+      <select id="clipped-in-row" aria-label="Court" style="margin-left: 300px; width: 400px"><option>Landgericht Ingolstadt</option></select>
+    </div>
+  </div>
+  <!-- Named by a label, and not named at all (its option text is not a name). -->
+  <label for="named">Case</label> <select id="named"><option>ADV-024-A</option></select>
+  <select id="unnamed"><option>ADV-024-A</option></select>
   <!-- A closed off-canvas drawer: not on screen. -->
   <nav aria-hidden="true" style="position: fixed; top: 0; left: 100%"><button>Hidden</button></nav>
 </main>

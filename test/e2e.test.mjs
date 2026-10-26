@@ -143,8 +143,9 @@ describe("e2e", () => {
     assert.deepEqual(r.failures, []);
     const m = r.metrics;
     assert.equal(m["wide.phone.dark.png"].overflow, false, "the document itself does not scroll");
-    assert.equal(m["wide.phone.dark.png"].offscreen, 1, "the clipped select, not the scroller's button or the hidden drawer");
-    assert.deepEqual(m["wide.phone.dark.png"].offscreenSample, ["select#clipped"]);
+    assert.equal(m["wide.phone.dark.png"].offscreen, 2, "the clipped select and the one a clipping card holds inside a scroll row, not the scroller's button or the hidden drawer");
+    assert.deepEqual(m["wide.phone.dark.png"].offscreenSample, ["select#clipped", "select#clipped-in-row"]);
+    assert.deepEqual(m["wide.phone.dark.png"].unnamedSample, ["select#unnamed"], "option text does not name a select");
     assert.equal(m["wide.desktop.dark.png"].offscreen, 0, "it fits on a desktop");
   });
 
