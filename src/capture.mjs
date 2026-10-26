@@ -187,6 +187,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
         } catch (err) {
           // A shot without its metrics would read as "no violations before" in the report: drop it.
           rmSync(path.join(stage, variant.file), { force: true });
+          delete metrics[variant.file];
           failures.push(`${label}: ${String(err.message).split("\n")[0]}`);
           log(`  FAIL ${label}: ${String(err.message).split("\n")[0]}`);
         } finally {
