@@ -15,7 +15,7 @@ export function loadConfig(file) {
   try {
     cfg = JSON.parse(readFileSync(file, "utf8"));
   } catch (err) {
-    throw new Error(`${file}: ${err.code === "ENOENT" ? "not found" : `not valid JSON (${err.message})`}`);
+    throw new Error(`${file}: ${err.code === "ENOENT" ? "not found" : `not valid JSON (${err.message})`}`, { cause: err });
   }
   const problems = [];
   if (!validateSchema(cfg)) {
