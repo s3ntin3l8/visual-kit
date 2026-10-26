@@ -5,8 +5,12 @@
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "private": true,
-  "bin": { "visual-kit": "bin/visual-kit.mjs" },
-  "engines": { "node": ">=22" },
+  "bin": {
+    "visual-kit": "bin/visual-kit.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
     "test:unit": "node --test test/unit.test.mjs",
@@ -20,8 +24,8 @@
     "pngjs": "7.0.0"
   },
   "devDependencies": {
-    "eslint": "^9.0.0",
-    "@eslint/js": "^9.0.0",
-    "globals": "^16.0.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0"
   }
 }
