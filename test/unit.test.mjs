@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -127,14 +127,13 @@ test("diff: different sizes are padded and flagged as resized", () => {
 
 test("compare: a route that starts answering with an error is called out, and a missing base page is new", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vk-cmp-"));
+  const metrics = { base: {}, head: {} };
   const put = (side, file, status) => {
     const d = path.join(dir, side);
     mkdirSync(d, { recursive: true });
     writeFileSync(path.join(d, file), PNG.sync.write(png(20, 20, [9, 9, 9, 255])));
-    const mfile = path.join(d, "metrics.json");
-    const m = existsSync(mfile) ? JSON.parse(readFileSync(mfile, "utf8")) : {};
-    m[file] = { status, axe: [], console: [], overflow: false, unnamed: 0 };
-    writeFileSync(mfile, JSON.stringify(m));
+    metrics[side][file] = { status, axe: [], console: [], overflow: false, unnamed: 0 };
+    writeFileSync(path.join(d, "metrics.json"), JSON.stringify(metrics[side]));
   };
   put("base", "a.png", 200);
   put("head", "a.png", 500);
