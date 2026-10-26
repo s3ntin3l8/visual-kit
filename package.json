@@ -1,12 +1,16 @@
 {
   "name": "visual-kit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Reproducible screenshots, loops and visual checks for web apps, from one pinned Docker image",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "private": true,
-  "bin": { "visual-kit": "bin/visual-kit.mjs" },
-  "engines": { "node": ">=22" },
+  "bin": {
+    "visual-kit": "bin/visual-kit.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
     "test:unit": "node --test test/unit.test.mjs",
