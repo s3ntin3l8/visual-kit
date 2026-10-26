@@ -1,4 +1,5 @@
 node_modules/
 .out/
 *.staging
+# per-branch git worktrees (the workflow convention: .wt/<branch>)
 .wt/
