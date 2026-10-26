@@ -71,7 +71,7 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
-        "path": { "type": "string", "pattern": "^/" },
+        "path": { "type": "string", "pattern": "^/(?![/\\\\])", "description": "Path on the demo; // and /\\ would leave it." },
         "tags": {
           "type": "array",
           "uniqueItems": true,

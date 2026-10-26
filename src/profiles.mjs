@@ -55,19 +55,33 @@ export const PROFILES = {
 
 export const DEFAULT_TAGS = ["check", "audit"];
 
-/** The scenes a profile renders, narrowed by `--routes` (names or path prefixes). */
+/** The profile's viewports, plus the repo's overrides. The landing spec is fixed for every app: no overrides. */
+export function viewportsFor(cfg, profileName) {
+  const profile = PROFILES[profileName];
+  return profileName === "landing" ? profile.viewports : { ...profile.viewports, ...(cfg.viewports ?? {}) };
+}
+
+export const viewportFor = (cfg, profileName, name) => viewportsFor(cfg, profileName)[name];
+
+/** The scenes a profile renders, narrowed by `--routes`: a scene name, or a path that matches itself and everything below it. */
 export function selectScenes(cfg, profileName, routes = []) {
   const profile = PROFILES[profileName];
   const inProfile = cfg.scenes.filter((s) => (s.tags ?? DEFAULT_TAGS).includes(profile.tag));
   if (!routes.length) return inProfile;
-  const wanted = (s) => routes.some((r) => s.name === r || s.path === r || s.path.startsWith(`${r.replace(/\/$/, "")}/`) || s.path.split(/[?#]/)[0] === r);
+  const wanted = (s) =>
+    routes.some((raw) => {
+      if (s.name === raw) return true;
+      const r = raw.replace(/\/+$/, "") || "/";
+      const pathOnly = s.path.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
+      return pathOnly === r || pathOnly.startsWith(`${r}/`);
+    });
   return inProfile.filter(wanted);
 }
 
 /** One entry per scene × viewport × scheme the profile renders for the scene. */
 export function variants(cfg, profileName, scene) {
   const profile = PROFILES[profileName];
-  const viewports = { ...profile.viewports, ...(cfg.viewports ?? {}) };
+  const viewports = viewportsFor(cfg, profileName);
   const names = (scene.viewports ?? Object.keys(profile.viewports)).filter((n) => viewports[n]);
   const schemes = (scene.schemes ?? profile.schemes).filter((s) => profile.schemes.includes(s));
   const out = [];

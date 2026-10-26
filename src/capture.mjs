@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -87,6 +87,17 @@ async function newContext(browser, cfg, variant, extra = {}) {
   return context;
 }
 
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** The scene's URL on the demo. Refuses a non-loopback demo and a scene path that leaves it (`//host/x`). */
+export function sceneUrl(baseUrl, scenePath) {
+  const base = new URL(baseUrl);
+  if (!LOOPBACK.has(base.hostname)) throw new Error(`${baseUrl} is not a loopback address; visual-kit only captures an isolated local demo`);
+  const url = new URL(scenePath, base);
+  if (url.origin !== base.origin) throw new Error(`scene path "${scenePath}" leaves the demo (${url.origin})`);
+  return url.toString();
+}
+
 async function loadHooks(file) {
   if (!file || !existsSync(file)) return null;
   return import(pathToFileURL(path.resolve(file)).href);
@@ -105,7 +116,7 @@ async function openScene({ context, cfg, scene, variant, hooks, baseUrl }) {
     }, scene.localStorage);
   }
   await hooks?.beforeScene?.({ context, page, scene, variant, cfg });
-  const response = await page.goto(new URL(scene.path, baseUrl).toString(), { waitUntil: "load" });
+  const response = await page.goto(sceneUrl(baseUrl, scene.path), { waitUntil: "load" });
   await page.addStyleTag({ content: BASE_STYLE });
   await settlePage(page, scene, hooks);
   return { page, response, consoleErrors };
@@ -164,12 +175,14 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
           else if (scene.settle) await page.waitForSelector(scene.settle, { state: "visible" });
           if (scene.steps?.length || scene.settle !== undefined) await settlePage(page, scene, hooks);
           await shoot(page, scene, variant, profile.fullPage, cfg, path.join(stage, variant.file));
-          files.push(variant.file);
           if (profileName === "check" || profileName === "audit") {
             metrics[variant.file] = { status: response?.status() ?? 0, ...(await pageMetrics(page)), console: consoleErrors };
           }
+          files.push(variant.file);
           log(`  ok  ${label}`);
         } catch (err) {
+          // A shot without its metrics would read as "no violations before" in the report: drop it.
+          rmSync(path.join(stage, variant.file), { force: true });
           failures.push(`${label}: ${String(err.message).split("\n")[0]}`);
           log(`  FAIL ${label}: ${String(err.message).split("\n")[0]}`);
         } finally {
@@ -190,16 +203,30 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
     await browser.close();
   }
 
-  if (Object.keys(metrics).length) {
-    const { writeFileSync } = await import("node:fs");
-    writeFileSync(path.join(stage, "metrics.json"), `${JSON.stringify(metrics, null, 2)}\n`);
-  }
-  if (failures.length && !files.length) {
+  if (Object.keys(metrics).length) writeFileSync(path.join(stage, "metrics.json"), `${JSON.stringify(metrics, null, 2)}\n`);
+
+  // A check compares whatever rendered (a scene the base lacks fails there and shows as "new"), so its
+  // partial output is useful. Everything else is a deliverable: a partial set must never replace a
+  // complete one, so on any failure the previous output stays untouched.
+  const publishPartial = profileName === "check";
+  if (failures.length && (!publishPartial || !files.length)) {
     rmSync(stage, { recursive: true, force: true });
-    return { files, metrics, failures };
+    if (!publishPartial) log(`  output left untouched: ${path.relative(process.cwd(), outDir) || outDir}`);
+    return { files: publishPartial ? files : [], metrics, failures };
   }
+  guardReplace(outDir);
+  writeFileSync(path.join(stage, MARKER), "visual-kit output: this folder is replaced wholesale on every run\n");
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(path.dirname(outDir), { recursive: true });
   renameSync(stage, outDir);
   return { files, metrics, failures };
+}
+
+export const MARKER = ".visual-kit";
+
+/** Replacing a folder is only for folders this tool wrote (or empty ones); anything else needs VISUAL_KIT_FORCE=1. */
+function guardReplace(outDir) {
+  if (!existsSync(outDir) || process.env.VISUAL_KIT_FORCE === "1") return;
+  if (existsSync(path.join(outDir, MARKER)) || readdirSync(outDir).length === 0) return;
+  throw new Error(`${outDir} exists, is not empty and was not written by visual-kit; refusing to replace it (pass --force to allow it once)`);
 }

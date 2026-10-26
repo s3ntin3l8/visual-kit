@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -8,6 +8,7 @@ import { compare, diffPngs } from "../src/compare.mjs";
 import { padRect } from "../src/clip.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { lastChangeSeconds, loopEnd } from "../src/freeze.mjs";
+import { sceneUrl } from "../src/capture.mjs";
 import { PROFILES, selectScenes, variants } from "../src/profiles.mjs";
 
 function config(extra = {}) {
@@ -143,4 +144,41 @@ test("compare: a route that starts answering with an error is called out, and a 
   const byFile = Object.fromEntries(s.entries.map((e) => [e.file, e]));
   assert.ok(byFile["a.png"].health.some((h) => /HTTP 500/.test(h)));
   assert.equal(byFile["b.png"].result, "new");
+});
+
+test("profiles: --routes tolerates a trailing slash and a query", () => {
+  const cfg = { scenes: [{ name: "a", path: "/cases?tab=x" }, { name: "b", path: "/cases/1" }, { name: "c", path: "/casework" }] };
+  assert.deepEqual(selectScenes(cfg, "check", ["/cases/"]).map((s) => s.name), ["a", "b"]);
+  assert.deepEqual(selectScenes(cfg, "check", ["/cases"]).map((s) => s.name), ["a", "b"]);
+});
+
+test("profiles: the landing spec ignores viewport overrides, check does not", () => {
+  const cfg = { viewports: { desktop: { width: 1000, height: 700 } }, scenes: [{ name: "x", path: "/" }] };
+  assert.equal(variants(cfg, "landing", { name: "x", path: "/" })[0].viewport.width, 1600);
+  assert.equal(variants(cfg, "check", { name: "x", path: "/" })[0].viewport.width, 1000);
+});
+
+test("capture: sceneUrl stays on a loopback demo", () => {
+  assert.equal(sceneUrl("http://127.0.0.1:3985", "/triage?x=1"), "http://127.0.0.1:3985/triage?x=1");
+  assert.throws(() => sceneUrl("http://127.0.0.1:3985", "//evil.com/x"), /leaves the demo/);
+  assert.throws(() => sceneUrl("http://127.0.0.1:3985", "/\\evil.com/x"), /leaves the demo/);
+  assert.throws(() => sceneUrl("https://example.com", "/"), /not a loopback/);
+});
+
+test("config: a scene path that would leave the demo is refused by the schema", () => {
+  assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "//evil.com/x" }] })), /path/);
+});
+
+test("compare: console text cannot break the markdown table", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-md-"));
+  for (const side of ["base", "head"]) {
+    mkdirSync(path.join(dir, side));
+    writeFileSync(path.join(dir, side, "a.png"), PNG.sync.write(png(10, 10, [1, 1, 1, 255])));
+  }
+  writeFileSync(path.join(dir, "base", "metrics.json"), JSON.stringify({ "a.png": { status: 200, axe: [], console: [], overflow: false, unnamed: 0 } }));
+  writeFileSync(path.join(dir, "head", "metrics.json"), JSON.stringify({ "a.png": { status: 200, axe: [], console: ["bad | pipe\nand newline"], overflow: false, unnamed: 0 } }));
+  const s = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "r") });
+  const md = readFileSync(path.join(dir, "r", "summary.md"), "utf8");
+  assert.ok(md.includes("bad \\| pipe and newline"));
+  assert.equal(s.entries[0].health.length, 1);
 });

@@ -12,7 +12,7 @@ This is the one place the spec lives. Every repo that uses visual-kit, and
 3. **`visual/scenes.json`** (see below), and optionally **`visual/hooks.mjs`**.
 4. **Four make targets**, thin wrappers around `visual/.kit/run.sh`, which is extracted from the image
    and never committed.
-5. **`.gitignore`** entries: `visual/.kit/`, `visual/.out/`, `docs/audit/assets/`.
+5. **`.gitignore`** entries: `visual/.kit/`, `visual/.out/`, `docs/audit/assets/`, `*.staging`.
 
 ```make
 VISUAL_IMAGE := visual-kit-local/$(notdir $(CURDIR))
@@ -45,7 +45,9 @@ visual-check: visual/.kit/run.sh ## Before/after of ROUTES against BASE (default
 | `make visual-check [ROUTES=a,b] [BASE=ref]` | scenes tagged `check`, base vs working tree | `visual/.out/check/` | no |
 
 `ROUTES` is a comma-separated list of scene names or paths. A path matches itself and everything below it
-(`/cases` matches `/cases/ADV-024-A`).
+(`/cases` and `/cases/` both match `/cases`, `/cases?x` and `/cases/ADV-024-A`).
+
+Only one check runs per checkout at a time (they share the base cache, the worktree and the demo port).
 
 ## Profiles
 
@@ -58,6 +60,9 @@ All presentation shots are **viewport-sized** unless the scene says `fullPage`; 
 | `readme` | light, dark | `desktop` 1440×900 @2x · `mobile` 390×844 @2x | `<scene>-<light\|dark>-<desktop\|mobile>.png`, loops as above |
 | `check` | dark, light | `desktop` 1440×900 @1x · `phone` 390×844 @1x | `<scene>.<viewport>.<scheme>.png` |
 | `audit` | dark, light | `desktop` 1440×900 @1x · `tablet` 820×1180 @1x · `phone` 390×844 @2x | `<scene>.<viewport>.<scheme>.png` |
+
+`viewports` in `scenes.json` overrides or adds viewports for `readme`, `check` and `audit`; the `landing` spec is
+fixed for every app and ignores it.
 
 Chromium rounds the phone viewport at @3x, so a landing mobile shot can be one device pixel short
 (2531 instead of 2532). Consumers must allow ±1px.
@@ -108,19 +113,30 @@ Fonts are loaded, nothing is `aria-busy`, the network is idle, animations and tr
 caret is hidden, reduced motion is on, and `Date` is fixed to `clock`. Anything still volatile goes in `mask`.
 A scene that fails is reported and the others still render; the run exits non-zero.
 
+**Output is replaced wholesale, and only when it is safe.** A run renders into a staging folder and swaps it in
+at the end. If any scene failed, a presentation or audit run leaves the previous output untouched (a flaky scene
+must never delete a committed screenshot); only a `check` publishes a partial set, because the other side
+compares whatever rendered. A folder is replaced only if it is empty or carries the `.visual-kit` marker the
+tool wrote; anything else needs `--force` once (the first `make screenshots` over hand-made screenshots). The
+launcher refuses an output that is the repository, one of its parents, or inside `.git`. A loop is
+`webm` + `mp4` + `jpg` or nothing, and a missing ffmpeg fails the run instead of dropping the loop silently.
+
+**Loopback only.** `demo.url` must be loopback (schema), the CLI refuses a non-loopback `--url`, and a scene
+path that would leave the demo (`//host/x`) is refused, so a capture never reaches another host.
+
 A `check` renders **both sides with the working tree's `scenes.json` and `hooks.mjs`**, so the comparison
 varies only the app. A scene whose steps need UI the base does not have yet (the new filter you just added)
 fails on the base, which the report shows as **new**; a scene that fails on the working tree fails the check
 after the report is written.
 
-A `check` also records per shot: axe violations (rule, impact, node count), console errors, horizontal
+A `check` (and an `audit`) also records per shot: axe violations (rule, impact, node count), console errors, horizontal
 overflow, and controls without an accessible name. The report shows what changed against the base.
 
 ## What personal-landing validates
 
 For each app it pulls with `make screenshots-landing OUT=<dir>`:
 
-- only `*.png`, `*.webm`, `*.mp4`, `*.jpg` files;
+- only `*.png`, `*.webm`, `*.mp4`, `*.jpg` files (the `.visual-kit` marker is ignored);
 - stills named `<scene>-desktop.png` / `<scene>-mobile.png`, 3200×2000 / 1170×2532 (±1px) for viewport-sized
   scenes (a `target` scene has the element's size, so only the ratio-to-scale rule applies);
 - each loop as a complete `webm` + `mp4` + `jpg` triplet.

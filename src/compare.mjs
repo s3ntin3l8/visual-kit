@@ -98,14 +98,17 @@ export function compare({ baseDir, headDir, outDir, threshold = 0.1, maxDiffPixe
   return summary;
 }
 
+const cellText = (t) => String(t).replace(/\s+/g, " ").replaceAll("|", "\\|");
+
 function markdown(s) {
   const lines = ["## Visual check", ""];
   lines.push(`${s.total} shots compared: **${s.changed} changed**, ${s.new} new, ${s.removed} removed, ${s.same} identical.`, "");
+  if (s.total > 0 && s.new === s.total) lines.push("> **Every shot is new: the base rendered nothing.** The comparison says nothing; look at the base capture above.", "");
   const interesting = s.entries.filter((e) => e.result !== "same" || e.health.length);
   if (!interesting.length) return `${lines.join("\n")}Nothing changed.\n`;
   lines.push("| Shot | Result | Detail |", "| --- | --- | --- |");
   for (const e of interesting) {
-    const detail = [e.result === "changed" ? (e.resized ? `size ${e.size.base.join("×")} → ${e.size.head.join("×")}` : `${e.pixels} px differ`) : "", ...e.health].filter(Boolean).join("<br>");
+    const detail = [e.result === "changed" ? (e.resized ? `size ${e.size.base.join("×")} → ${e.size.head.join("×")}` : `${e.pixels} px differ`) : "", ...e.health].filter(Boolean).map(cellText).join("<br>");
     lines.push(`| \`${e.file}\` | ${e.result} | ${detail} |`);
   }
   return `${lines.join("\n")}\n`;

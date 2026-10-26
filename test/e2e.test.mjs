@@ -1,7 +1,7 @@
 // Needs Chromium and ffmpeg: run it in the image (see README) or where `npx playwright install chromium` ran.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -69,7 +69,7 @@ describe("e2e", () => {
     const out = path.join(work, "landing");
     const r = await capture({ cfg, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, log() {} });
     assert.deepEqual(r.failures, []);
-    assert.deepEqual(readdirSync(out).sort(), ["home-desktop.png", "home-mobile.png", "home.jpg", "home.mp4", "home.webm", "list-desktop.png", "list-mobile.png", "menu-desktop.png", "menu-mobile.png"]);
+    assert.deepEqual(readdirSync(out).filter((f) => f !== ".visual-kit").sort(), ["home-desktop.png", "home-mobile.png", "home.jpg", "home.mp4", "home.webm", "list-desktop.png", "list-mobile.png", "menu-desktop.png", "menu-mobile.png"]);
     assert.ok(near(size(path.join(out, "home-desktop.png")), [3200, 2000]));
     assert.ok(near(size(path.join(out, "home-mobile.png")), [1170, 2532]));
     const [w, h] = size(path.join(out, "menu-desktop.png"));
@@ -96,6 +96,34 @@ describe("e2e", () => {
     const spot = "spot-menu.desktop.dark.png";
     assert.deepEqual(px(spot, 1400, 70), px(plain, 1400, 70), "inside the menu: untouched");
     assert.ok(px(spot, 200, 400)[0] < px(plain, 200, 400)[0], "outside the menu: dimmed");
+  });
+
+  test("a failed presentation run leaves the previous output untouched", async () => {
+    const out = path.join(work, "deliverable");
+    const first = await capture({ cfg, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, log() {} });
+    assert.deepEqual(first.failures, []);
+    const before = readdirSync(out).sort();
+    assert.ok(before.includes(".visual-kit"));
+    const broken = { ...cfg, scenes: [{ ...cfg.scenes[0], steps: [{ click: "#does-not-exist" }], viewports: ["desktop"] }, cfg.scenes[1]] };
+    const second = await capture({ cfg: broken, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, log() {} });
+    assert.ok(second.failures.length > 0);
+    assert.deepEqual(readdirSync(out).sort(), before, "the complete set is still there");
+    assert.ok(!existsSync(`${out}.staging`));
+  });
+
+  test("a folder the tool did not write is not replaced without --force", async () => {
+    const out = path.join(work, "handmade");
+    mkdirSync(out);
+    writeFileSync(path.join(out, "precious.png"), "x");
+    await assert.rejects(capture({ cfg, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, routes: ["home"], log() {} }), /not written by visual-kit/);
+    assert.ok(existsSync(path.join(out, "precious.png")));
+    process.env.VISUAL_KIT_FORCE = "1";
+    try {
+      await capture({ cfg, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, routes: ["home"], log() {} });
+    } finally {
+      delete process.env.VISUAL_KIT_FORCE;
+    }
+    assert.ok(!existsSync(path.join(out, "precious.png")));
   });
 
   test("a failing scene is reported and the others still render", async () => {

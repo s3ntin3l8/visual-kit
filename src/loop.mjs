@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { lastChangeSeconds, loopEnd } from "./freeze.mjs";
+import { viewportFor } from "./profiles.mjs";
 
 function ffmpeg(args) {
   const res = spawnSync("ffmpeg", ["-y", "-loglevel", "error", ...args], { stdio: "inherit" });
@@ -22,12 +23,9 @@ function videoLastChange(src) {
  * the end is cut `tailSec` after the last on-screen change.
  */
 export async function recordLoop({ browser, cfg, scene, profile, profileName, baseUrl, hooks, openScene, newContext, runStep, outDir, log }) {
-  if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
-    log("  skip loop: ffmpeg not found");
-    return [];
-  }
+  if (spawnSync("ffmpeg", ["-version"]).status !== 0) throw new Error("ffmpeg not found, so the loop cannot be encoded");
   const vpName = Object.keys(profile.viewports)[0];
-  const variant = { vp: vpName, scheme: profile.schemes[profile.schemes.length - 1], viewport: { ...profile.viewports[vpName], ...(cfg.viewports?.[vpName] ?? {}) } };
+  const variant = { vp: vpName, scheme: profile.schemes[profile.schemes.length - 1], viewport: viewportFor(cfg, profileName, vpName) };
   // Playwright records in CSS pixels whatever the device scale, so the loop is 1x.
   const size = { width: variant.viewport.width, height: variant.viewport.height };
   const videoDir = mkdtempSync(path.join(tmpdir(), "visual-kit-loop-"));
@@ -35,22 +33,33 @@ export async function recordLoop({ browser, cfg, scene, profile, profileName, ba
   try {
     const context = await newContext(browser, cfg, variant, { recordVideo: { dir: videoDir, size } });
     const startedAt = Date.now();
-    const { page } = await openScene({ context, cfg, scene, variant, hooks, baseUrl });
-    // Everything before this point (load, settle) is trimmed off.
-    const offset = (Date.now() - startedAt) / 1000;
-    await page.waitForTimeout(600);
-    for (const step of scene.steps ?? []) await runStep(page, step);
-    await page.waitForTimeout(tailSec * 1000);
-    await context.close();
+    let offset;
+    try {
+      const { page } = await openScene({ context, cfg, scene, variant, hooks, baseUrl });
+      // Everything before this point (load, settle) is trimmed off.
+      offset = (Date.now() - startedAt) / 1000;
+      await page.waitForTimeout(600);
+      for (const step of scene.steps ?? []) await runStep(page, step);
+      await page.waitForTimeout(tailSec * 1000);
+    } finally {
+      await context.close(); // finalises the video file
+    }
 
     const [raw] = readdirSync(videoDir);
     const src = path.join(videoDir, raw);
     const base = path.join(outDir, scene.name);
     const end = loopEnd(videoLastChange(src), offset, tailSec);
     const input = ["-ss", offset.toFixed(2), ...end, "-i", src, "-an"];
-    ffmpeg([...input, "-c:v", "libvpx-vp9", "-crf", "36", "-b:v", "0", "-row-mt", "1", `${base}.webm`]);
-    ffmpeg([...input, "-c:v", "libx264", "-crf", "26", "-pix_fmt", "yuv420p", "-movflags", "+faststart", `${base}.mp4`]);
-    ffmpeg(["-sseof", "-0.5", "-i", src, "-frames:v", "1", "-q:v", "3", `${base}.jpg`]);
+    try {
+      ffmpeg([...input, "-c:v", "libvpx-vp9", "-crf", "36", "-b:v", "0", "-row-mt", "1", `${base}.webm`]);
+      // H.264 needs even dimensions.
+      ffmpeg([...input, "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264", "-crf", "26", "-pix_fmt", "yuv420p", "-movflags", "+faststart", `${base}.mp4`]);
+      ffmpeg(["-sseof", "-0.5", "-i", src, "-frames:v", "1", "-q:v", "3", `${base}.jpg`]);
+    } catch (err) {
+      // All three or none: never leave a loop a consumer would half-read.
+      for (const ext of ["webm", "mp4", "jpg"]) rmSync(`${base}.${ext}`, { force: true });
+      throw err;
+    }
     log(`  ok  ${scene.name} loop (${profileName})`);
     return [`${scene.name}.webm`, `${scene.name}.mp4`, `${scene.name}.jpg`];
   } finally {
