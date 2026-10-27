@@ -109,36 +109,66 @@ eval "$HOST_ENV"
 # Host hooks: with a visual/host-hooks.sh, hooks.mjs may call host(name, ...args) during a capture. The image
 # writes req-<n> files (name, then one argument per line) into a directory mounted at /hostcall; this watcher
 # runs `bash host-hooks.sh <name> <demo-dir> <args…>` from the checkout's copy of the script and answers with
-# res-<n> (the exit code, then stdout cut at 64 KiB). Requests are served one at a time. See CONTRACT.md.
+# res-<n> (the exit code, then stdout cut at 64 KiB). Requests are served one at a time. The hook's stdout goes
+# through a FIFO into a sink that keeps the first 64 KiB and drains the rest, so a chatty hook neither fills the
+# temp dir nor is interrupted. The runner removes req-<n> when it gives up (hostTimeoutSec): the watcher notices
+# while the hook runs and stops its process group. See CONTRACT.md.
 HOST_HOOKS=$(realpath_m "$(dirname "$CONFIG")/host-hooks.sh")
 WATCH_PID="" HOSTCALL="" DEMO_DIR="" KIT_EXTRA=() CAPTURE_ARGS=()
+# Takes a hook's process group down: TERM, a grace period, then KILL.
+stop_group() {
+  local pid=$1 i
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  for i in $(seq 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.05; done
+  kill -KILL -- "-$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 hostcall_watch() {
-  local dir=$1 demo=$2 req n line name args code pid=""
+  local dir=$1 demo=$2 req n line name args code pid="" sink="" abandoned i
   # A hook still running when the launcher stops is taken down with its whole process group.
-  trap '[ -z "$pid" ] || { kill -TERM -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }; exit 0' TERM
+  trap '[ -z "$pid" ] || stop_group "$pid"; [ -z "$sink" ] || kill "$sink" 2>/dev/null || true; exit 0' TERM
   while :; do
     for req in "$dir"/req-*; do
       case "$req" in *.tmp) continue ;; esac
       [ -f "$req" ] || continue
       n=${req##*/req-}
       args=()
-      while IFS= read -r line || [ -n "$line" ]; do args+=("$line"); done <"$req"
+      # A request withdrawn between the test above and this read must not end the watcher.
+      { while IFS= read -r line || [ -n "$line" ]; do args+=("$line"); done <"$req"; } 2>/dev/null || continue
       name=${args[0]-}
       [ ${#args[@]} -eq 0 ] || unset 'args[0]'
-      # Own process group (setsid, or perl where macOS has none); stdout goes to a file so the cap below cuts
-      # the answer, never the script.
+      mkfifo "$dir/pipe-$n"
+      { head -c 65536 >"$dir/out-$n"; cat >/dev/null; } <"$dir/pipe-$n" &
+      sink=$!
+      # Own process group (setsid, or perl where macOS has none).
       if command -v setsid >/dev/null 2>&1; then
-        ( cd "$demo" && exec setsid bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/out-$n" &
+        ( cd "$demo" && exec setsid bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/pipe-$n" &
       else
-        ( cd "$demo" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/out-$n" &
+        ( cd "$demo" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/pipe-$n" &
       fi
       pid=$!
-      code=0
-      wait "$pid" || code=$?
+      code=0 abandoned=0
+      while kill -0 "$pid" 2>/dev/null; do
+        [ -f "$req" ] || { abandoned=1; break; }
+        sleep 0.05
+      done
+      if [ "$abandoned" = 1 ]; then
+        stop_group "$pid"
+        echo "visual-kit: host hook '$name' stopped: the capture gave up on it" >&2
+      else
+        wait "$pid" || code=$?
+      fi
       pid=""
-      { printf '%s\n' "$code"; head -c 65536 "$dir/out-$n"; } >"$dir/res-$n.tmp"
-      mv "$dir/res-$n.tmp" "$dir/res-$n"
-      rm -f "$req" "$dir/out-$n"
+      # The sink ends when every writer has closed the FIFO; a grandchild that kept it open must not hang us.
+      for i in $(seq 40); do kill -0 "$sink" 2>/dev/null || break; sleep 0.05; done
+      kill "$sink" 2>/dev/null || true
+      wait "$sink" 2>/dev/null || true
+      sink=""
+      if [ "$abandoned" = 0 ]; then
+        { printf '%s\n' "$code"; cat "$dir/out-$n" 2>/dev/null || true; } >"$dir/res-$n.tmp"
+        mv "$dir/res-$n.tmp" "$dir/res-$n"
+      fi
+      rm -f "$req" "$dir/out-$n" "$dir/pipe-$n"
     done
     sleep 0.1
   done
