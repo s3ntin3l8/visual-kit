@@ -415,7 +415,7 @@ test("compare: without a config the viewport table is reported unchecked, and an
 });
 
 test("capture --baseline-only is refused off the check profile", async () => {
-  await assert.rejects(capture({ cfg: loadConfig(config()), profile: "audit", baseUrl: "http://127.0.0.1:1", outDir: path.join(tmpdir(), "vk-never"), onlyBaseline: true, log() {} }), /--baseline-only is for the check profile/);
+  await assert.rejects(capture({ cfg: loadConfig(config()), profile: "audit", baseUrl: "http://127.0.0.1:1", outDir: path.join(mkdtempSync(path.join(tmpdir(), "vk-never-")), "out"), onlyBaseline: true, log() {} }), /--baseline-only is for the check profile/);
 });
 
 test("compare CLI: a --config that does not exist is an error, not a silent skip of the viewport check", () => {
