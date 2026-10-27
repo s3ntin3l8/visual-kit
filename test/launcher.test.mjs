@@ -13,7 +13,7 @@ const tmp = realpathSync(mkdtempSync(path.join(tmpdir(), "vk-launcher-")));
 const STUB = `#!/bin/bash
 echo "$*" >>"$STUB_LOG"
 case " $* " in
-  *" env --config "*) printf "DEMO_START='echo DEMO_READY; exec sleep 60'\\nDEMO_URL='http://127.0.0.1:1'\\nDEMO_READY='DEMO_READY'\\nDEMO_TIMEOUT='5'\\nBASE_DEPS=''\\nCACHE_KEY_FILES=''\\n" ;;
+  *" env --config "*) printf "DEMO_START='echo DEMO_READY; exec sleep 60'\\nDEMO_URL='http://127.0.0.1:1'\\nDEMO_READY='DEMO_READY'\\nDEMO_TIMEOUT='5'\\nBASE_DEPS=''\\nCACHE_KEY_FILES='%s'\\n" "$STUB_KEY_FILES" ;;
   "image inspect"*) echo sha256:stubimage ;;
 esac
 `;
@@ -132,6 +132,40 @@ describe("launcher portability", { timeout: 60_000 }, () => {
     run(r, ["check", "--base", "main"], { env, shims: bsd(r) });
     assert.match(shimLog(r), /sha256sum/);
     assert.equal(cacheMount(), gnu);
+  });
+});
+
+describe("launcher cache key", { timeout: 60_000 }, () => {
+  test("a listed file invalidates the cached base, an unlisted one does not", () => {
+    const r = repo("cache-key-files");
+    writeFileSync(path.join(r.dir, "lock.txt"), "one\n");
+    writeFileSync(path.join(r.dir, "other.txt"), "one\n");
+    const env = { XDG_CACHE_HOME: path.join(r.dir, "cache"), STUB_KEY_FILES: "lock.txt missing.txt" };
+    const cacheFor = () => {
+      writeFileSync(r.log, "");
+      run(r, ["check", "--base", "main"], { env });
+      return log(r).match(/-v (\S+\/cache\/visual-kit\/\S+):\/out/)?.[1];
+    };
+    const first = cacheFor();
+    assert.ok(first, log(r));
+    assert.equal(cacheFor(), first, "nothing changed: same key");
+    writeFileSync(path.join(r.dir, "other.txt"), "two\n");
+    assert.equal(cacheFor(), first, "an unlisted file does not matter");
+    writeFileSync(path.join(r.dir, "lock.txt"), "two\n");
+    const changed = cacheFor();
+    assert.notEqual(changed, first, "a listed file changed: a new base");
+    writeFileSync(path.join(r.dir, "missing.txt"), "now here\n");
+    assert.notEqual(cacheFor(), changed, "a listed file that appears counts too");
+  });
+});
+
+describe("launcher cache key errors", { timeout: 60_000 }, () => {
+  test("a listed file that cannot be read stops the run instead of counting as absent", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+    const r = repo("cache-key-unreadable");
+    writeFileSync(path.join(r.dir, "lock.txt"), "one\n", { mode: 0o000 });
+    const res = run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache"), STUB_KEY_FILES: "lock.txt" } });
+    assert.notEqual(res.status, 0);
+    assert.match(res.out, /cannot hash lock\.txt/);
   });
 });
 
