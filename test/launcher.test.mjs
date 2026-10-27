@@ -55,7 +55,8 @@ const log = (r) => {
   }
 };
 
-describe("launcher guards", () => {
+// A demo that outlives its run must fail the test, not stall the job.
+describe("launcher guards", { timeout: 60_000 }, () => {
   test("an unknown mode prints the usage", () => {
     const res = run(repo("usage"), ["bogus"]);
     assert.notEqual(res.status, 0);
@@ -92,7 +93,7 @@ describe("launcher guards", () => {
   });
 });
 
-describe("launcher portability", () => {
+describe("launcher portability", { timeout: 60_000 }, () => {
   // BSD realpath has no -m and macOS has no sha256sum: the shims make the Linux tools behave that way.
   // Each shim leaves a marker, so a test can tell the fallback ran rather than the GNU tool.
   const bsd = (r) => ({ realpath: `echo realpath >>"${r.dir}/shim.log"; exit 1`, sha256sum: `echo sha256sum >>"${r.dir}/shim.log"; exit 127` });
@@ -134,7 +135,7 @@ describe("launcher portability", () => {
   });
 });
 
-describe("launcher networking", () => {
+describe("launcher networking", { timeout: 60_000 }, () => {
   const dockerRun = (r) => log(r).split("\n").filter((l) => l.startsWith("run ")).join("\n");
 
   test("Linux uses host networking; bridge adds the host alias instead", () => {

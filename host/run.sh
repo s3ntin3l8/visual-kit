@@ -15,7 +15,9 @@ set -euo pipefail
 die() { echo "visual-kit: $*" >&2; exit 1; }
 
 # realpath -m (the path need not exist) without GNU coreutils: absolute, with . and .. folded away, and the part
-# that exists resolved through symlinks (so a link to the repository is still the repository).
+# that exists resolved through symlinks (so a link to the repository is still the repository). It folds `..`
+# lexically before resolving, so `link/..` is the link's own parent here and the link target's parent for GNU
+# realpath; both are checked against the repository, which is all the guards need.
 realpath_m() {
   if realpath -m / >/dev/null 2>&1; then realpath -m "$1"; return; fi
   local path=$1 part out=() head tail=""
