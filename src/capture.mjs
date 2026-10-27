@@ -97,7 +97,11 @@ export function sceneUrl(baseUrl, scenePath) {
   const url = new URL(scenePath, base);
   if (url.origin !== base.origin) throw new Error(`scene path "${scenePath}" leaves the demo (${url.origin})`);
   // Without host networking (Docker Desktop) the demo is reached through the host alias the launcher sets.
-  if (process.env.VISUAL_KIT_HOST_ALIAS) url.hostname = process.env.VISUAL_KIT_HOST_ALIAS;
+  const alias = process.env.VISUAL_KIT_HOST_ALIAS;
+  if (alias) {
+    if (!/^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$/.test(alias)) throw new Error(`VISUAL_KIT_HOST_ALIAS "${alias}" is not a bare hostname`);
+    url.hostname = alias;
+  }
   return url.toString();
 }
 

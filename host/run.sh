@@ -14,10 +14,11 @@ set -euo pipefail
 
 die() { echo "visual-kit: $*" >&2; exit 1; }
 
-# realpath -m (the path need not exist) without GNU coreutils: absolute, with . and .. folded away.
+# realpath -m (the path need not exist) without GNU coreutils: absolute, with . and .. folded away, and the part
+# that exists resolved through symlinks (so a link to the repository is still the repository).
 realpath_m() {
   if realpath -m / >/dev/null 2>&1; then realpath -m "$1"; return; fi
-  local path=$1 part out=()
+  local path=$1 part out=() head tail=""
   case "$path" in /*) ;; *) path="$PWD/$path" ;; esac
   local IFS=/
   set -f
@@ -29,7 +30,11 @@ realpath_m() {
     esac
   done
   set +f
-  echo "/${out[*]-}"
+  head="/${out[*]-}"
+  unset IFS
+  while [ ! -d "$head" ] && [ "$head" != / ]; do tail="/${head##*/}$tail"; head=${head%/*}; [ -n "$head" ] || head=/; done
+  head=$(cd -P "$head" && pwd -P)
+  echo "${head%/}$tail" | sed 's#^$#/#'
 }
 
 # sha256 of stdin, as the bare hex digest.
@@ -60,6 +65,7 @@ if [ -n "${VISUAL_KIT_HOST_NETWORK:-}" ]; then NETWORK=$VISUAL_KIT_HOST_NETWORK
 elif [ "$(uname -s)" = Linux ]; then NETWORK=host
 else NETWORK=bridge
 fi
+[ "$NETWORK" != bridge ] || [ "$(uname -s)" != Linux ] || echo "visual-kit: bridge networking on Linux reaches the demo through docker0, so it must listen beyond 127.0.0.1; host networking is the default there" >&2
 case "$NETWORK" in host | bridge) ;; *) die "VISUAL_KIT_HOST_NETWORK must be host or bridge, got \"$NETWORK\"" ;; esac
 ROOT=$(git rev-parse --show-toplevel)
 CONFIG=${VISUAL_CONFIG:-visual/scenes.json}
@@ -103,6 +109,7 @@ start_demo() {
   local dir=$1
   : >"$DEMO_LOG"
   # Own process group, so stop_demo can take the demo's children down with it (macOS has no setsid).
+  command -v setsid >/dev/null 2>&1 || command -v perl >/dev/null 2>&1 || die "neither setsid nor perl found; one of them is needed to start the demo in its own process group"
   if command -v setsid >/dev/null 2>&1; then ( cd "$dir" && exec setsid bash -c "$DEMO_START" ) >"$DEMO_LOG" 2>&1 &
   else ( cd "$dir" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash -c "$DEMO_START" ) >"$DEMO_LOG" 2>&1 &
   fi

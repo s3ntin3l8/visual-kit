@@ -170,6 +170,10 @@ test("capture: without host networking the launcher's host alias replaces the lo
   try {
     assert.equal(sceneUrl("http://127.0.0.1:3985", "/triage?x=1"), "http://host.docker.internal:3985/triage?x=1");
     assert.throws(() => sceneUrl("https://example.com", "/"), /not a loopback/);
+    for (const bad of ["evil.com:80", "http://evil.com", "a/b", "evil.com#", "-x", "x."]) {
+      process.env.VISUAL_KIT_HOST_ALIAS = bad;
+      assert.throws(() => sceneUrl("http://127.0.0.1:3985", "/"), /not a bare hostname/, bad);
+    }
   } finally {
     delete process.env.VISUAL_KIT_HOST_ALIAS;
   }

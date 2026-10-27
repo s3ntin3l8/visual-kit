@@ -1,7 +1,7 @@
 // The host launcher's guards, against a stub `docker`: no container, no browser, so it runs on any host (macOS CI too).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -94,13 +94,29 @@ describe("launcher guards", () => {
 
 describe("launcher portability", () => {
   // BSD realpath has no -m and macOS has no sha256sum: the shims make the Linux tools behave that way.
-  const bsd = { realpath: "exit 1", sha256sum: "exit 127" };
+  // Each shim leaves a marker, so a test can tell the fallback ran rather than the GNU tool.
+  const bsd = (r) => ({ realpath: `echo realpath >>"${r.dir}/shim.log"; exit 1`, sha256sum: `echo sha256sum >>"${r.dir}/shim.log"; exit 127` });
+  const shimLog = (r) => readFileSync(path.join(r.dir, "shim.log"), "utf8");
 
-  test("the guards still hold without GNU realpath -m", () => {
+  test("the guards still hold without GNU realpath -m, and the fallback is what ran", () => {
     const r = repo("bsd-guards");
     for (const out of ["/", "a/../..", ".git/x"]) {
-      assert.match(run(r, ["landing", "--out", out], { shims: bsd }).out, /refusing --out/, out);
+      assert.match(run(r, ["landing", "--out", out], { shims: bsd(r) }).out, /refusing --out/, out);
     }
+    assert.match(shimLog(r), /realpath/);
+  });
+
+  test("an --out that is a symlink to the repository (or into .git) is refused without GNU realpath", () => {
+    const r = repo("bsd-symlink");
+    symlinkSync(r.dir, path.join(tmp, "link-to-repo"));
+    symlinkSync(path.join(r.dir, ".git"), path.join(r.dir, "link-to-git"));
+    mkdirSync(path.join(r.dir, "real-out"));
+    symlinkSync(path.join(r.dir, "real-out"), path.join(r.dir, "link-to-out"));
+    for (const out of [path.join(tmp, "link-to-repo"), path.join(tmp, "link-to-repo/visual/.."), "link-to-git/x"]) {
+      assert.match(run(r, ["landing", "--out", out], { shims: bsd(r) }).out, /refusing --out/, out);
+    }
+    // A symlink to an ordinary folder is fine, and not-yet-existing leaves under it too.
+    assert.doesNotMatch(run(r, ["landing", "--out", "link-to-out/new/leaf"], { shims: bsd(r) }).out, /refusing --out/);
   });
 
   test("the cache key is the same with shasum as with sha256sum", () => {
@@ -112,7 +128,8 @@ describe("launcher portability", () => {
     const gnu = cacheMount();
     assert.ok(gnu, log(r));
     writeFileSync(r.log, "");
-    run(r, ["check", "--base", "main"], { env, shims: bsd });
+    run(r, ["check", "--base", "main"], { env, shims: bsd(r) });
+    assert.match(shimLog(r), /sha256sum/);
     assert.equal(cacheMount(), gnu);
   });
 });
@@ -129,6 +146,11 @@ describe("launcher networking", () => {
     assert.doesNotMatch(dockerRun(bridge), /--network host/);
     assert.match(dockerRun(bridge), /--add-host host\.docker\.internal:host-gateway/);
     assert.match(dockerRun(bridge), /VISUAL_KIT_HOST_ALIAS=host\.docker\.internal/);
+  });
+
+  test("bridge networking on Linux warns that the demo must listen beyond loopback", { skip: process.platform !== "linux" }, () => {
+    const res = run(repo("net-warn"), ["landing", "--out", "out"], { env: { VISUAL_KIT_HOST_NETWORK: "bridge" } });
+    assert.match(res.out, /bridge networking on Linux/);
   });
 
   test("an unknown network mode is refused", () => {
