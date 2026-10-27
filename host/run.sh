@@ -170,7 +170,12 @@ case "$MODE" in
     HOOKS="$(dirname "$CONFIG")/hooks.mjs"
     # What the base was built from but the key would not otherwise see: the listed files, as the working tree has them.
     KEY_FILES=""
-    for f in $CACHE_KEY_FILES; do KEY_FILES="$KEY_FILES$f=$([ -f "$f" ] && git hash-object "$f" || echo absent) "; done
+    set -f # the schema allows no glob characters; never expand one anyway
+    for f in $CACHE_KEY_FILES; do
+      if [ -f "$f" ]; then h=$(git hash-object -- "$f") || die "cannot hash $f (cacheKeyFiles)"; else h=absent; fi
+      KEY_FILES="$KEY_FILES$f=$h "
+    done
+    set +f
     KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" "$KEY_FILES" | sha256 | cut -c1-16)
     CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")-$(printf '%s' "$ROOT" | sha256 | cut -c1-8)"
     CACHE="$CACHE_ROOT/$KEY"

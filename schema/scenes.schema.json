@@ -26,8 +26,8 @@
     },
     "cacheKeyFiles": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))\\S+$" },
-      "description": "Files of the repo (lockfiles, e.g. requirements.txt) whose content is part of the base capture's cache key: the base runs against the working tree's baseDeps, so a change to what they were built from must not reuse an old base."
+      "items": { "type": "string", "pattern": "^(?![/-])(?!.*(^|/)\\.\\.(/|$))[^\\s*?\\[\\]]+$" },
+      "description": "Files of the repo (lockfiles, e.g. requirements.txt) whose content is part of the base capture's cache key: the base runs against the working tree's baseDeps, so a change to what they were built from must not reuse an old base. A path that is not a regular file counts as absent."
     },
     "clock": { "type": "string", "description": "Fixed browser time (Date.now / new Date). Pair it with the demo's own DEMO_NOW." },
     "locale": { "type": "string" },

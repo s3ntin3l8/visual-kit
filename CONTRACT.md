@@ -115,7 +115,10 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
   and `DEMO_NOW`. The base runs against the working tree's `baseDeps`, so a dependency change there can change
   the base's rendering without touching any of those. List the lockfiles they were built from: their content
   (as the working tree has it) joins the key, so editing one makes the next check recapture the base, and an
-  unrelated edit does not. Repo-relative paths, no spaces. (`--fresh` still forces a recapture.)
+  unrelated edit does not. Repo-relative paths with no spaces, glob characters or leading `-`. A listed path that
+  does not exist (or is not a regular file) contributes `absent`: that is what makes an optional lockfile safe,
+  and why a typo'd path silently stops invalidating the base, so check the spelling. A listed file that cannot be
+  read stops the run. (`--fresh` still forces a recapture.)
 - **Tags** pick the workflows a scene belongs to: `presentation` (README and landing), `check`, `audit`.
   Default `["check", "audit"]`.
 - **`stills`** (default `true`): `false` makes a loop-only scene. It needs `loop` and the `presentation` tag

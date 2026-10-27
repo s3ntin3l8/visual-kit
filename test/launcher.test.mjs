@@ -159,6 +159,16 @@ describe("launcher cache key", { timeout: 60_000 }, () => {
   });
 });
 
+describe("launcher cache key errors", { timeout: 60_000 }, () => {
+  test("a listed file that cannot be read stops the run instead of counting as absent", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+    const r = repo("cache-key-unreadable");
+    writeFileSync(path.join(r.dir, "lock.txt"), "one\n", { mode: 0o000 });
+    const res = run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache"), STUB_KEY_FILES: "lock.txt" } });
+    assert.notEqual(res.status, 0);
+    assert.match(res.out, /cannot hash lock\.txt/);
+  });
+});
+
 describe("launcher networking", { timeout: 60_000 }, () => {
   const dockerRun = (r) => log(r).split("\n").filter((l) => l.startsWith("run ")).join("\n");
 

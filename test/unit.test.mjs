@@ -79,7 +79,7 @@ test("config: host env is shell-quoted", () => {
 
 test("config: cacheKeyFiles are repo-relative paths without spaces", () => {
   assert.equal(loadConfig(config({ cacheKeyFiles: ["requirements.txt", "frontend/package-lock.json"] })).cacheKeyFiles.length, 2);
-  for (const bad of ["/etc/passwd", "../x", "a/../../x", "has space.txt"]) {
+  for (const bad of ["/etc/passwd", "../x", "a/../../x", "has space.txt", "lock*.txt", "-lock.txt", "a?b", "a[b]"]) {
     assert.throws(() => loadConfig(config({ cacheKeyFiles: [bad] })), /cacheKeyFiles/, bad);
   }
 });
