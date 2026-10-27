@@ -112,8 +112,13 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold
   }
 
   const count = (r) => entries.filter((e) => e.result === r).length;
-  const reasons = baselinesDir ? provenance.staleness(provenance.read(baselinesDir), provenance.current(cfg)) : [];
-  const summary = { total: entries.length, changed: count("changed"), new: count("new"), removed: count("removed"), same: count("same"), ...(baselinesDir ? { baselines: { stale: reasons.length > 0, reasons } } : {}), entries };
+  // An empty folder (a `.gitkeep`) has no shots to be stale; and without `cfg` the viewport table cannot be
+  // compared, which the summary says instead of reading as a clean bill of health.
+  const checked = baselinesDir && baselineFiles.size > 0;
+  const recorded = checked ? provenance.read(baselinesDir) : null;
+  const reasons = checked ? provenance.staleness(recorded, provenance.current(cfg)) : [];
+  const unchecked = checked && recorded?.viewports && !cfg ? ["viewports"] : [];
+  const summary = { total: entries.length, changed: count("changed"), new: count("new"), removed: count("removed"), same: count("same"), ...(baselinesDir ? { baselines: { stale: reasons.length > 0, reasons, unchecked } } : {}), entries };
   writeFileSync(path.join(outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeFileSync(path.join(outDir, "summary.md"), markdown(summary));
   writeFileSync(path.join(outDir, "index.html"), html(summary));

@@ -15,15 +15,16 @@ const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a
 
 /**
  * The inputs that decide how a shot renders: the runner, the pinned Playwright (and with it the browser the image
- * ships), and the viewport table of the `check` profile for this repo's config. Fonts come from the image's apt
+ * ships), and the viewport table of the rendering profile for this repo's config. Fonts come from the image's apt
  * packages and are not versioned: regenerate on any image bump, as CONTRACT.md says.
  */
-export function current(cfg) {
-  return { runner: pkg.version, playwright: pkg.dependencies.playwright, ...(cfg ? { viewports: hash(sorted(viewportsFor(cfg, "check"))) } : {}) };
+export function current(cfg, profile = "check") {
+  return { runner: pkg.version, playwright: pkg.dependencies.playwright, ...(cfg ? { viewports: hash(sorted(viewportsFor(cfg, profile))) } : {}) };
 }
 
-export function write(dir, cfg) {
-  writeFileSync(path.join(dir, FILE), `${JSON.stringify(current(cfg), null, 2)}\n`);
+/** `profile` is the one that rendered the set: a baseline is a `check` shot, but the direct CLI accepts any. */
+export function write(dir, cfg, profile = "check") {
+  writeFileSync(path.join(dir, FILE), `${JSON.stringify(current(cfg, profile), null, 2)}\n`);
 }
 
 /** The recorded provenance, or null when the set has none (or it cannot be read). */

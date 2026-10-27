@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -386,7 +387,7 @@ test("compare: stale baselines are a notice in the report, never a verdict", () 
   // Matching provenance: no notice.
   writeFileSync(path.join(dir, "baselines", "provenance.json"), JSON.stringify(provenance.current(cfg)));
   const fresh = run("fresh");
-  assert.deepEqual(fresh.baselines, { stale: false, reasons: [] });
+  assert.deepEqual(fresh.baselines, { stale: false, reasons: [], unchecked: [] });
   assert.doesNotMatch(readFileSync(path.join(dir, "fresh", "summary.md"), "utf8"), /stale/);
   // Another browser build: notice in all three outputs, same verdicts.
   writeFileSync(path.join(dir, "baselines", "provenance.json"), JSON.stringify({ ...provenance.current(cfg), playwright: "0.0.1" }));
@@ -398,4 +399,30 @@ test("compare: stale baselines are a notice in the report, never a verdict", () 
   // No baselines at all: no `baselines` key.
   const none = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "none") });
   assert.equal(none.baselines, undefined);
+});
+
+test("compare: without a config the viewport table is reported unchecked, and an empty baselines folder is never stale", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-unchecked-"));
+  for (const side of ["base", "head", "baselines", "empty"]) mkdirSync(path.join(dir, side));
+  for (const side of ["base", "head", "baselines"]) writeFileSync(path.join(dir, side, "a.png"), PNG.sync.write(png(10, 10, [1, 1, 1, 255])));
+  writeFileSync(path.join(dir, "baselines", "provenance.json"), JSON.stringify(provenance.current(loadConfig(config()))));
+  const noConfig = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "baselines"), outDir: path.join(dir, "r1") });
+  assert.deepEqual(noConfig.baselines, { stale: false, reasons: [], unchecked: ["viewports"] });
+  const empty = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "empty"), outDir: path.join(dir, "r2") });
+  assert.deepEqual(empty.baselines, { stale: false, reasons: [], unchecked: [] });
+});
+
+test("provenance: the table recorded is the profile that rendered the set", () => {
+  const cfg = loadConfig(config());
+  assert.notEqual(provenance.current(cfg, "check").viewports, provenance.current(cfg, "audit").viewports);
+});
+
+test("compare CLI: a --config that does not exist is an error, not a silent skip of the viewport check", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-cli-config-"));
+  for (const side of ["base", "head", "baselines"]) mkdirSync(path.join(dir, side));
+  const args = ["bin/visual-kit.mjs", "compare", "--base", path.join(dir, "base"), "--head", path.join(dir, "head"), "--baselines", path.join(dir, "baselines"), "--out", path.join(dir, "r")];
+  const missing = spawnSync("node", [...args, "--config", path.join(dir, "nope.json")], { encoding: "utf8" });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /nope\.json/);
+  assert.equal(spawnSync("node", args, { encoding: "utf8" }).status, 0, "without --config the check simply skips the viewport table");
 });

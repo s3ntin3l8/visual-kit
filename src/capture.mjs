@@ -226,7 +226,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   }
 
   if (Object.keys(metrics).length) writeFileSync(path.join(stage, "metrics.json"), `${JSON.stringify(metrics, null, 2)}\n`);
-  if (onlyBaseline) provenance.write(stage, cfg);
+  if (onlyBaseline) provenance.write(stage, cfg, profileName);
 
   // A check compares whatever rendered (a scene the base lacks fails there and shows as "new"), so its
   // partial output is useful. Everything else is a deliverable: a partial set must never replace a

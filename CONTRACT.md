@@ -162,7 +162,10 @@ instead, and GitHub's image diff does the reviewing:
   recorded set differs from the current runner (another Playwright, another viewport table, another visual-kit
   major.minor, or no `provenance.json`), `summary.md`, `index.html` and `summary.json` (`baselines.stale`,
   `baselines.reasons`) carry a "baselines look stale" notice. It never changes a verdict, a count or the exit
-  code, and a runner patch release does not trigger it. Fonts come from the image's packages and are not
+  code, and a runner patch release does not trigger it. The viewport table is compared only when `compare` is
+  given `--config` (the launcher always passes it); a direct `compare --baselines` without it skips that
+  dimension and lists it under `baselines.unchecked`. A `--config` that does not exist is an error. An empty
+  `visual/baselines/` (no shots) is never reported stale. Fonts come from the image's packages and are not
   versioned, so regenerate after any image bump even when no notice appears.
 - Unflagged scenes, and repos without `visual/baselines/`, behave exactly as before. `--fail-on-diff` stays
   opt-in.
