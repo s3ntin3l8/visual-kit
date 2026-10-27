@@ -43,6 +43,8 @@ function semanticProblems(cfg) {
       else if (actions[0] !== "fill" && "value" in step) out.push(`${where}.steps[${j}]: "value" belongs to fill only`);
     });
     if (scene.viewports?.length === 0) out.push(scene.stills === false ? `${where}: "viewports" is empty; drop it, a loop-only scene has no stills to limit` : `${where}: "viewports" is empty; for a scene that renders only its loop use "stills": false`);
+    if (scene.baseline && !(scene.tags ?? DEFAULT_TAGS).includes("check")) out.push(`${where}: "baseline": true is a check feature; add the "check" tag`);
+    if (scene.baseline && scene.stills === false) out.push(`${where}: "baseline": true needs stills; a loop-only scene has none to commit`);
     if (scene.stills === false && !scene.loop) out.push(`${where}: "stills": false leaves nothing to render without a "loop"`);
     // Only presentation profiles record loops: any other tag set leaves a loop-only scene rendering nothing, anywhere.
     if (scene.stills === false && !(scene.tags ?? DEFAULT_TAGS).includes("presentation")) out.push(`${where}: a loop-only scene renders only in landing and readme; add the "presentation" tag`);

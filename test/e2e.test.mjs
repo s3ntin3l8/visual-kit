@@ -60,6 +60,30 @@ describe("e2e", () => {
     assert.ok(existsSync(path.join(work, "diff-report", "index.html")));
   });
 
+  test("baselines: only flagged scenes are captured, and a check compares them against the committed files", async () => {
+    const baselines = path.join(work, "baselines");
+    // The committed baselines come from the page as the team wants it (the accent server); the merge base ("a") has the old look.
+    const made = await capture({ cfg, profile: "check", baseUrl: "http://127.0.0.1:4174", outDir: baselines, onlyBaseline: true, log() {} });
+    assert.deepEqual(made.failures, []);
+    assert.deepEqual(made.files.sort(), ["home.desktop.dark.png", "home.desktop.light.png", "home.phone.dark.png", "home.phone.light.png", "menu.desktop.dark.png", "menu.desktop.light.png", "menu.phone.dark.png", "menu.phone.light.png"]);
+    assert.ok(existsSync(path.join(baselines, "metrics.json")));
+    const s = compare({ baseDir: path.join(work, "a"), headDir: path.join(work, "c"), baselinesDir: baselines, outDir: path.join(work, "baseline-report") });
+    const byFile = Object.fromEntries(s.entries.map((e) => [e.file, e]));
+    assert.equal(byFile["home.desktop.dark.png"].result, "same", "the head matches the baseline although it differs from the merge base");
+    assert.equal(byFile["home.desktop.dark.png"].baseline, true);
+    assert.equal(byFile["settings.desktop.dark.png"].baseline, undefined, "unflagged scenes behave as before");
+    assert.ok(s.entries.filter((e) => /^(home|menu)\./.test(e.file)).every((e) => e.result === "same" && e.baseline), "every flagged shot matches its baseline");
+    // One flagged scene failing while the other renders must not replace the committed set with a partial one.
+    const before = readdirSync(baselines).sort();
+    const broken = { ...cfg, scenes: cfg.scenes.map((x) => (x.name === "home" ? { ...x, steps: [{ click: "#does-not-exist" }] } : x)) };
+    const lines = [];
+    const failed = await capture({ cfg: broken, profile: "check", baseUrl: "http://127.0.0.1:4174", outDir: baselines, onlyBaseline: true, log: (l) => lines.push(l) });
+    assert.ok(failed.failures.length > 0);
+    assert.ok(lines.some((l) => /ok\s+menu/.test(l)), "the other flagged scene did render, so a partial set existed to be published");
+    assert.deepEqual(readdirSync(baselines).sort(), before, "the committed set is untouched");
+    await assert.rejects(capture({ cfg: { ...cfg, scenes: cfg.scenes.map((x) => ({ ...x, baseline: undefined })) }, profile: "check", baseUrl: "http://127.0.0.1:4174", outDir: path.join(work, "none"), onlyBaseline: true, log() {} }), /flagged "baseline": true/);
+  });
+
   test("check: --routes narrows the run", async () => {
     const r = await capture({ cfg, profile: "check", baseUrl: "http://127.0.0.1:4173", outDir: path.join(work, "routes"), routes: ["/settings.html"], log() {} });
     assert.deepEqual(r.files.every((f) => f.startsWith("settings.")), true);

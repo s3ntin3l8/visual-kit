@@ -111,6 +111,7 @@
             "css": { "type": "string", "description": "Arbitrary CSS injected before the shot." }
           }
         },
+        "baseline": { "type": "boolean", "default": false, "description": "Commit this scene's check shots in visual/baselines and compare against them instead of the merge base (needs the `check` tag)." },
         "stills": { "type": "boolean", "default": true, "description": "false renders only the loop: needs `loop` and the `presentation` tag, and renders no stills for any viewport or scheme." },
         "loop": {
           "type": "object",

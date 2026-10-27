@@ -25,7 +25,8 @@
         {
           "wait": 400
         }
-      ]
+      ],
+      "baseline": true
     },
     {
       "name": "menu",
@@ -41,7 +42,8 @@
       ],
       "settle": "#menu",
       "target": "#menu",
-      "padding": 16
+      "padding": 16,
+      "baseline": true
     },
     {
       "name": "list",

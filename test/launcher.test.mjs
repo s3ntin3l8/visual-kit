@@ -229,6 +229,38 @@ esac
   });
 });
 
+describe("launcher baselines", { timeout: 60_000 }, () => {
+  test("baseline regenerates the flagged scenes into visual/baselines, and refuses --routes", () => {
+    const r = repo("baseline-mode");
+    const narrowed = run(r, ["baseline", "--routes", "triage"]);
+    assert.notEqual(narrowed.status, 0);
+    assert.match(narrowed.out, /would drop the others/);
+    run(r, ["baseline"]);
+    const calls = dockerCalls(r);
+    assert.match(calls, /-v \S+\/visual:\/out/, "the baselines folder is the output");
+    assert.match(calls, /capture check .*--out \/out\/baselines .*--baseline-only/);
+    assert.ok(existsSync(path.join(r.dir, "visual/baselines/.visual-kit")), "claimed like any output folder");
+  });
+
+  test("baseline will not write into a baselines folder it did not create", () => {
+    const r = repo("baseline-claim");
+    mkdirSync(path.join(r.dir, "visual/baselines"));
+    writeFileSync(path.join(r.dir, "visual/baselines/precious.png"), "x");
+    assert.match(run(r, ["baseline"]).out, /not written by visual-kit/);
+  });
+
+  test("a check compares against visual/baselines only when it exists", () => {
+    const r = repo("baseline-check");
+    const compareCall = () => log(r).split("\n").find((l) => l.includes(" compare ")) ?? "";
+    run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache") } });
+    assert.doesNotMatch(compareCall(), /--baselines/);
+    mkdirSync(path.join(r.dir, "visual/baselines"));
+    writeFileSync(r.log, "");
+    run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache") } });
+    assert.match(compareCall(), /--baselines \/work\/visual\/baselines/);
+  });
+});
+
 describe("launcher networking", { timeout: 60_000 }, () => {
   const dockerRun = (r) => log(r).split("\n").filter((l) => l.startsWith("run ")).join("\n");
 

@@ -155,10 +155,11 @@ async function shoot(page, scene, variant, fullPage, cfg, outFile) {
  * Renders a profile's scenes against a running demo into `outDir`.
  * Returns { files, metrics, failures }. A scene that fails is reported, the rest still render.
  */
-export async function capture({ cfg, profile: profileName, baseUrl, outDir, routes = [], hooksFile, log = console.log }) {
+export async function capture({ cfg, profile: profileName, baseUrl, outDir, routes = [], hooksFile, onlyBaseline = false, log = console.log }) {
   const profile = PROFILES[profileName];
   if (!profile) throw new Error(`unknown profile "${profileName}" (${Object.keys(PROFILES).join(" | ")})`);
-  const scenes = selectScenes(cfg, profileName, routes);
+  const scenes = selectScenes(cfg, profileName, routes).filter((s) => !onlyBaseline || s.baseline);
+  if (onlyBaseline && !scenes.length) throw new Error(`no scene is flagged "baseline": true for the ${profileName} profile`);
   if (!scenes.length) throw new Error(`no scene matches profile "${profileName}"${routes.length ? ` and --routes ${routes.join(",")}` : ""}`);
 
   const loaded = await loadHooks(hooksFile);
@@ -228,7 +229,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   // A check compares whatever rendered (a scene the base lacks fails there and shows as "new"), so its
   // partial output is useful. Everything else is a deliverable: a partial set must never replace a
   // complete one, so on any failure the previous output stays untouched.
-  const publishPartial = profileName === "check";
+  const publishPartial = profileName === "check" && !onlyBaseline; // baselines are a deliverable, not a throwaway report
   // Nothing rendered is a failure of its own (every scene filtered out, a typo): never publish it over a
   // complete set.
   if (!files.length && !failures.length) failures.push(`nothing was rendered for the ${profileName} profile (check the scenes' viewports, schemes and tags)`);
