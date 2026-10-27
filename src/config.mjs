@@ -67,6 +67,7 @@ export function hostEnv(cfg) {
     `DEMO_READY=${q(cfg.demo.readyOutput ?? "DEMO_READY")}`,
     `DEMO_TIMEOUT=${q(cfg.demo.startTimeoutSec ?? 300)}`,
     `BASE_DEPS=${q((cfg.baseDeps ?? []).join(" "))}`,
+    `CACHE_KEY_FILES=${q((cfg.cacheKeyFiles ?? []).join(" "))}`,
   ];
   for (const [k, v] of Object.entries(cfg.demo.env ?? {})) {
     if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`demo.env key "${k}" is not a valid variable name`);

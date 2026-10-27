@@ -101,7 +101,7 @@ kit() {
   docker run --rm --ipc=host "${net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -e "VISUAL_KIT_FORCE=$FORCE" "${mounts[@]}" -w /work "$IMAGE" "$@"
 }
 
-# DEMO_START DEMO_URL DEMO_READY DEMO_TIMEOUT BASE_DEPS (+ the demo's exported env).
+# DEMO_START DEMO_URL DEMO_READY DEMO_TIMEOUT BASE_DEPS CACHE_KEY_FILES (+ the demo's exported env).
 # Assigned first: a failure inside `eval "$(…)"` would be swallowed.
 HOST_ENV=$(kit "" env --config "$CONFIG") || die "cannot read $CONFIG"
 eval "$HOST_ENV"
@@ -168,7 +168,10 @@ case "$MODE" in
     MERGE_BASE=$(git merge-base HEAD "$BASE_REF") || die "no merge base with $BASE_REF (git fetch origin?)"
     IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")
     HOOKS="$(dirname "$CONFIG")/hooks.mjs"
-    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" | sha256 | cut -c1-16)
+    # What the base was built from but the key would not otherwise see: the listed files, as the working tree has them.
+    KEY_FILES=""
+    for f in $CACHE_KEY_FILES; do KEY_FILES="$KEY_FILES$f=$([ -f "$f" ] && git hash-object "$f" || echo absent) "; done
+    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" "$KEY_FILES" | sha256 | cut -c1-16)
     CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")-$(printf '%s' "$ROOT" | sha256 | cut -c1-8)"
     CACHE="$CACHE_ROOT/$KEY"
     mkdir -p "$CACHE_ROOT"

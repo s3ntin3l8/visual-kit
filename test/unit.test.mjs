@@ -73,6 +73,15 @@ test("config: host env is shell-quoted", () => {
   assert.match(out, /^DEMO_START='echo '\\''hi'\\''; make demo'$/m);
   assert.match(out, /^export DEMO_NOW='2026-10-01T09:00:00Z'$/m);
   assert.throws(() => hostEnv({ demo: { start: "x", url: "http://127.0.0.1:1", env: { "bad key": "1" } } }), /not a valid variable name/);
+  assert.match(hostEnv({ ...cfg, cacheKeyFiles: ["requirements.txt", "frontend/package-lock.json"] }), /^CACHE_KEY_FILES='requirements.txt frontend\/package-lock.json'$/m);
+  assert.match(hostEnv(cfg), /^CACHE_KEY_FILES=''$/m);
+});
+
+test("config: cacheKeyFiles are repo-relative paths without spaces", () => {
+  assert.equal(loadConfig(config({ cacheKeyFiles: ["requirements.txt", "frontend/package-lock.json"] })).cacheKeyFiles.length, 2);
+  for (const bad of ["/etc/passwd", "../x", "a/../../x", "has space.txt"]) {
+    assert.throws(() => loadConfig(config({ cacheKeyFiles: [bad] })), /cacheKeyFiles/, bad);
+  }
 });
 
 test("profiles: the landing spec is the one personal-landing expects", () => {

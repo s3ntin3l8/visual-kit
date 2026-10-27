@@ -24,6 +24,11 @@
       "items": { "type": "string" },
       "description": "Untracked dependency folders symlinked into the base worktree of a visual check (e.g. .venv, frontend/node_modules)."
     },
+    "cacheKeyFiles": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))\\S+$" },
+      "description": "Files of the repo (lockfiles, e.g. requirements.txt) whose content is part of the base capture's cache key: the base runs against the working tree's baseDeps, so a change to what they were built from must not reuse an old base."
+    },
     "clock": { "type": "string", "description": "Fixed browser time (Date.now / new Date). Pair it with the demo's own DEMO_NOW." },
     "locale": { "type": "string" },
     "storageState": { "type": "string", "description": "Path (relative to the repo) of a logged-in Playwright storage state." },
