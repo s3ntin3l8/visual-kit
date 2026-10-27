@@ -167,7 +167,9 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   try {
     for (const scene of scenes) {
       const todo = variants(cfg, profileName, scene);
-      if (!todo.length && !(profile.loops && scene.loop)) log(`  skip ${scene.name}: none of its viewports/schemes belong to the ${profileName} profile`);
+      if (!todo.length && !(profile.loops && scene.loop)) {
+        log(scene.stills === false ? `  skip ${scene.name}: a loop-only scene, and the ${profileName} profile records no loops` : `  skip ${scene.name}: none of its viewports/schemes belong to the ${profileName} profile`);
+      }
       for (const variant of todo) {
         const label = `${scene.name} (${variant.vp}, ${variant.scheme})`;
         const context = await newContext(browser, cfg, variant);

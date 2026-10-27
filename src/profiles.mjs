@@ -78,8 +78,9 @@ export function selectScenes(cfg, profileName, routes = []) {
   return inProfile.filter(wanted);
 }
 
-/** One entry per scene × viewport × scheme the profile renders for the scene. */
+/** One entry per scene × viewport × scheme the profile renders for the scene (none for a loop-only scene). */
 export function variants(cfg, profileName, scene) {
+  if (scene.stills === false) return [];
   const profile = PROFILES[profileName];
   const viewports = viewportsFor(cfg, profileName);
   const names = (scene.viewports ?? Object.keys(profile.viewports)).filter((n) => viewports[n]);

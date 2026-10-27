@@ -115,6 +115,25 @@
       "schemes": [
         "dark"
       ]
+    },
+    {
+      "name": "reel",
+      "path": "/",
+      "tags": [
+        "presentation"
+      ],
+      "stills": false,
+      "loop": {
+        "tailSec": 1
+      },
+      "steps": [
+        {
+          "click": "#open-menu"
+        },
+        {
+          "wait": 400
+        }
+      ]
     }
   ]
 }

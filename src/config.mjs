@@ -42,6 +42,8 @@ function semanticProblems(cfg) {
       else if (actions[0] === "fill" && typeof step.value !== "string") out.push(`${where}.steps[${j}]: fill needs a "value"`);
       else if (actions[0] !== "fill" && "value" in step) out.push(`${where}.steps[${j}]: "value" belongs to fill only`);
     });
+    if (scene.viewports?.length === 0) out.push(`${where}: "viewports" is empty; for a scene that renders only its loop use "stills": false`);
+    if (scene.stills === false && !scene.loop) out.push(`${where}: "stills": false leaves nothing to render without a "loop"`);
     for (const vp of scene.viewports ?? []) {
       if (!knownViewports.has(vp)) out.push(`${where}: unknown viewport "${vp}" (known: ${[...knownViewports].join(", ")})`);
     }
