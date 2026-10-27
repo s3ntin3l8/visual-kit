@@ -257,7 +257,7 @@ describe("launcher baselines", { timeout: 60_000 }, () => {
     mkdirSync(path.join(r.dir, "visual/baselines"));
     writeFileSync(r.log, "");
     run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache") } });
-    assert.match(compareCall(), /--baselines \/work\/visual\/baselines/);
+    assert.match(compareCall(), /--baselines \/work\/visual\/baselines --config visual\/scenes\.json/);
   });
 });
 

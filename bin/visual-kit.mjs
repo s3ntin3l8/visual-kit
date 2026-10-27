@@ -14,14 +14,14 @@ import { PROFILES } from "../src/profiles.mjs";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `usage:
   visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b] [--baseline-only]
-  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR] [--max-diff-pixels N] [--fail-on-diff]
+  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR [--config FILE]] [--max-diff-pixels N] [--fail-on-diff]
   visual-kit env --config FILE      shell assignments for the host launcher
   visual-kit host-files             tar of host/ on stdout (the launcher the Makefile extracts)
   visual-kit validate --config FILE
   visual-kit version`;
 
 const options = {
-  config: { type: "string", default: "visual/scenes.json" },
+  config: { type: "string" },
   url: { type: "string" },
   out: { type: "string" },
   routes: { type: "string", default: "" },
@@ -36,6 +36,7 @@ const options = {
 async function main() {
   const { values, positionals } = parseArgs({ options, allowPositionals: true });
   const [command, arg] = positionals;
+  const configPath = values.config ?? "visual/scenes.json";
   switch (command) {
     case "version":
       console.log(JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version);
@@ -43,17 +44,17 @@ async function main() {
     case "host-files":
       return spawnSync("tar", ["-C", path.join(root, "host"), "-cf", "-", "."], { stdio: "inherit" }).status ?? 1;
     case "validate":
-      loadConfig(values.config);
-      console.log(`${values.config}: ok`);
+      loadConfig(configPath);
+      console.log(`${configPath}: ok`);
       return 0;
     case "env":
-      console.log(hostEnv(loadConfig(values.config)));
+      console.log(hostEnv(loadConfig(configPath)));
       return 0;
     case "capture": {
       if (!PROFILES[arg]) throw new Error(`capture needs a profile: ${Object.keys(PROFILES).join(" | ")}`);
       if (!values.url || !values.out) throw new Error("capture needs --url and --out");
-      const cfg = loadConfig(values.config);
-      const hooksFile = path.join(path.dirname(values.config), "hooks.mjs");
+      const cfg = loadConfig(configPath);
+      const hooksFile = path.join(path.dirname(configPath), "hooks.mjs");
       const routes = values.routes.split(",").map((r) => r.trim()).filter(Boolean);
       const { files, failures } = await capture({ cfg, profile: arg, baseUrl: values.url, outDir: path.resolve(values.out), routes, hooksFile, onlyBaseline: values["baseline-only"] });
       console.log(`visual-kit: ${files.length} file(s) -> ${values.out}`);
@@ -67,7 +68,7 @@ async function main() {
       if (!values.base || !values.head || !values.out) throw new Error("compare needs --base, --head and --out");
       const maxDiffPixels = Number(values["max-diff-pixels"]);
       if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
-      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), maxDiffPixels });
+      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.baselines && values.config ? loadConfig(values.config) : undefined, maxDiffPixels });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
       return values["fail-on-diff"] && (s.changed || s.removed) ? 2 : 0;
     }

@@ -67,7 +67,17 @@ describe("e2e", () => {
     assert.deepEqual(made.failures, []);
     assert.deepEqual(made.files.sort(), ["home.desktop.dark.png", "home.desktop.light.png", "home.phone.dark.png", "home.phone.light.png", "menu.desktop.dark.png", "menu.desktop.light.png", "menu.phone.dark.png", "menu.phone.light.png"]);
     assert.ok(existsSync(path.join(baselines, "metrics.json")));
-    const s = compare({ baseDir: path.join(work, "a"), headDir: path.join(work, "c"), baselinesDir: baselines, outDir: path.join(work, "baseline-report") });
+    const original = readFileSync(path.join(baselines, "provenance.json"), "utf8");
+    const recorded = JSON.parse(original);
+    assert.deepEqual(Object.keys(recorded).sort(), ["playwright", "runner", "viewports"]);
+    const s = compare({ baseDir: path.join(work, "a"), headDir: path.join(work, "c"), baselinesDir: baselines, outDir: path.join(work, "baseline-report"), cfg });
+    assert.deepEqual(s.baselines, { stale: false, reasons: [], unchecked: [] }, "the set the same runner just rendered is not stale");
+    // A set rendered by another browser build or runner minor says so, and the verdicts stay what they were.
+    writeFileSync(path.join(baselines, "provenance.json"), JSON.stringify({ ...recorded, runner: "9.9.0" }));
+    const old = compare({ baseDir: path.join(work, "a"), headDir: path.join(work, "c"), baselinesDir: baselines, outDir: path.join(work, "baseline-stale-report"), cfg });
+    assert.match(old.baselines.reasons.join(), /visual-kit 9\.9\.0/);
+    assert.equal(old.changed, s.changed);
+    writeFileSync(path.join(baselines, "provenance.json"), original);
     const byFile = Object.fromEntries(s.entries.map((e) => [e.file, e]));
     assert.equal(byFile["home.desktop.dark.png"].result, "same", "the head matches the baseline although it differs from the merge base");
     assert.equal(byFile["home.desktop.dark.png"].baseline, true);
