@@ -130,6 +130,7 @@ const cellText = (t) => String(t).replace(/\s+/g, " ").replaceAll("|", "\\|");
 function markdown(s) {
   const lines = ["## Visual check", ""];
   lines.push(`${s.total} shots compared: **${s.changed} changed**, ${s.new} new, ${s.removed} removed, ${s.same} identical.`, "");
+  if (s.baselines?.unchecked?.length) lines.push(`> The committed baselines' ${s.baselines.unchecked.join(", ")} were not checked: \`compare\` ran without \`--config\`.`, "");
   if (s.baselines?.stale) lines.push(`> **The committed baselines look stale:** ${s.baselines.reasons.join("; ")}. Differences below may only be that; regenerate them with \`make visual-baseline\`.`, "");
   if (s.total > 0 && s.new === s.total) lines.push("> **Every shot is new: the base rendered nothing.** The comparison says nothing; look at the base capture above.", "");
   const interesting = s.entries.filter((e) => e.result !== "same" || e.health.length);
@@ -159,6 +160,7 @@ ${e.health.length ? `<ul>${e.health.map((h) => `<li>${esc(h)}</li>`).join("")}</
 .row{display:flex;gap:12px;align-items:flex-start}figure{flex:1;margin:0;min-width:0}img{width:100%;border:1px solid #2a2f37}
 figcaption{color:#8a8f98;margin-bottom:4px}section{margin-bottom:40px}li{color:#e0b341}.stale{color:#e0b341}</style>
 <h1>Visual check</h1><p>${s.total} shots: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical.</p>
+${s.baselines?.unchecked?.length ? `<p class="stale">The committed baselines' ${esc(s.baselines.unchecked.join(", "))} were not checked: <code>compare</code> ran without <code>--config</code>.</p>` : ""}
 ${s.baselines?.stale ? `<p class="stale"><b>The committed baselines look stale:</b> ${esc(s.baselines.reasons.join("; "))}. Differences below may only be that; regenerate them with <code>make visual-baseline</code>.</p>` : ""}
 ${rows || "<p>Nothing changed.</p>"}`;
 }

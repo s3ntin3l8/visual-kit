@@ -159,6 +159,7 @@ async function shoot(page, scene, variant, fullPage, cfg, outFile) {
 export async function capture({ cfg, profile: profileName, baseUrl, outDir, routes = [], hooksFile, onlyBaseline = false, log = console.log }) {
   const profile = PROFILES[profileName];
   if (!profile) throw new Error(`unknown profile "${profileName}" (${Object.keys(PROFILES).join(" | ")})`);
+  if (onlyBaseline && profileName !== "check") throw new Error(`--baseline-only is for the check profile (a baseline is compared by the check), not ${profileName}`);
   const scenes = selectScenes(cfg, profileName, routes).filter((s) => !onlyBaseline || s.baseline);
   if (onlyBaseline && !scenes.length) throw new Error(`no scene is flagged "baseline": true for the ${profileName} profile`);
   if (!scenes.length) throw new Error(`no scene matches profile "${profileName}"${routes.length ? ` and --routes ${routes.join(",")}` : ""}`);

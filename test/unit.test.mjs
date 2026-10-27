@@ -9,7 +9,7 @@ import { compare, diffPngs } from "../src/compare.mjs";
 import { padRect } from "../src/clip.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { lastChangeSeconds, loopEnd } from "../src/freeze.mjs";
-import { sceneUrl } from "../src/capture.mjs";
+import { capture, sceneUrl } from "../src/capture.mjs";
 import { createHost } from "../src/hostcall.mjs";
 import { PROFILES, selectScenes, variants } from "../src/profiles.mjs";
 import * as provenance from "../src/provenance.mjs";
@@ -408,19 +408,20 @@ test("compare: without a config the viewport table is reported unchecked, and an
   writeFileSync(path.join(dir, "baselines", "provenance.json"), JSON.stringify(provenance.current(loadConfig(config()))));
   const noConfig = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "baselines"), outDir: path.join(dir, "r1") });
   assert.deepEqual(noConfig.baselines, { stale: false, reasons: [], unchecked: ["viewports"] });
+  assert.match(readFileSync(path.join(dir, "r1", "summary.md"), "utf8"), /viewports were not checked/);
+  assert.match(readFileSync(path.join(dir, "r1", "index.html"), "utf8"), /viewports were not checked/);
   const empty = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "empty"), outDir: path.join(dir, "r2") });
   assert.deepEqual(empty.baselines, { stale: false, reasons: [], unchecked: [] });
 });
 
-test("provenance: the table recorded is the profile that rendered the set", () => {
-  const cfg = loadConfig(config());
-  assert.notEqual(provenance.current(cfg, "check").viewports, provenance.current(cfg, "audit").viewports);
+test("capture --baseline-only is refused off the check profile", async () => {
+  await assert.rejects(capture({ cfg: loadConfig(config()), profile: "audit", baseUrl: "http://127.0.0.1:1", outDir: path.join(tmpdir(), "vk-never"), onlyBaseline: true, log() {} }), /--baseline-only is for the check profile/);
 });
 
 test("compare CLI: a --config that does not exist is an error, not a silent skip of the viewport check", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vk-cli-config-"));
   for (const side of ["base", "head", "baselines"]) mkdirSync(path.join(dir, side));
-  const args = ["bin/visual-kit.mjs", "compare", "--base", path.join(dir, "base"), "--head", path.join(dir, "head"), "--baselines", path.join(dir, "baselines"), "--out", path.join(dir, "r")];
+  const args = [path.join(import.meta.dirname, "..", "bin", "visual-kit.mjs"), "compare", "--base", path.join(dir, "base"), "--head", path.join(dir, "head"), "--baselines", path.join(dir, "baselines"), "--out", path.join(dir, "r")];
   const missing = spawnSync("node", [...args, "--config", path.join(dir, "nope.json")], { encoding: "utf8" });
   assert.equal(missing.status, 1);
   assert.match(missing.stderr, /nope\.json/);
