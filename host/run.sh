@@ -2,7 +2,7 @@
 # Host side of visual-kit. The demo needs the host's toolchain, so it cannot run in the image:
 # this script boots it, runs the image against it and tears it down again.
 #
-#   run.sh <landing|readme|audit|check> [--routes a,b] [--out DIR] [--base REF] [--slug S] [--fresh] [--force]
+#   run.sh <landing|readme|audit|check|baseline> [--routes a,b] [--out DIR] [--base REF] [--slug S] [--fresh] [--force]
 #
 # An output folder is replaced wholesale, so it must be one this tool wrote (it leaves a .visual-kit file),
 # an empty one, or --force. It can never be the repository, one of its parents, or inside .git.
@@ -47,7 +47,7 @@ sha256() {
 }
 
 MODE=${1:-}; shift || true
-case "$MODE" in landing | readme | audit | check) ;; *) die "usage: run.sh <landing|readme|audit|check> [options]" ;; esac
+case "$MODE" in landing | readme | audit | check | baseline) ;; *) die "usage: run.sh <landing|readme|audit|check|baseline> [options]" ;; esac
 
 ROUTES="" OUT="" BASE_REF="origin/main" SLUG="" FRESH=0 FORCE=0
 while [ $# -gt 0 ]; do
@@ -111,7 +111,7 @@ eval "$HOST_ENV"
 # runs `bash host-hooks.sh <name> <demo-dir> <args…>` from the checkout's copy of the script and answers with
 # res-<n> (the exit code, then stdout cut at 64 KiB). Requests are served one at a time. See CONTRACT.md.
 HOST_HOOKS=$(realpath_m "$(dirname "$CONFIG")/host-hooks.sh")
-WATCH_PID="" HOSTCALL="" DEMO_DIR="" KIT_EXTRA=()
+WATCH_PID="" HOSTCALL="" DEMO_DIR="" KIT_EXTRA=() CAPTURE_ARGS=()
 hostcall_watch() {
   local dir=$1 demo=$2 req n line name args code pid=""
   # A hook still running when the launcher stops is taken down with its whole process group.
@@ -198,7 +198,7 @@ capture() {
     hostcall_watch "$HOSTCALL" "$DEMO_DIR" &
     WATCH_PID=$!
   fi
-  kit "$(dirname "$dir")" capture "$profile" --config "$CONFIG" --url "$DEMO_URL" --out "/out/$(basename "$dir")" ${ROUTES:+--routes "$ROUTES"} || rc=$?
+  kit "$(dirname "$dir")" capture "$profile" --config "$CONFIG" --url "$DEMO_URL" --out "/out/$(basename "$dir")" ${ROUTES:+--routes "$ROUTES"} ${CAPTURE_ARGS[@]+"${CAPTURE_ARGS[@]}"} || rc=$?
   stop_hostcall
   KIT_EXTRA=()
   return "$rc"
@@ -216,6 +216,14 @@ case "$MODE" in
     [ -n "$SLUG" ] || die "audit needs --slug YYYY-MM-<scope>-<topic>"
     [[ "$SLUG" =~ ^[0-9]{4}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "slug must look like YYYY-MM-<scope>-<topic>, got \"$SLUG\""
     start_demo "$ROOT"; capture audit "$ROOT/docs/audit/assets/$SLUG" ;;
+  baseline)
+    # The committed baselines of the scenes flagged "baseline": true, replaced as a whole, so never narrowed.
+    [ -z "$ROUTES" ] || die "baseline regenerates every flagged scene; --routes would drop the others"
+    BASELINES="$(dirname "$CONFIG")/baselines"
+    check_out "$BASELINES"
+    claim_dir "$(realpath_m "$BASELINES")"
+    CAPTURE_ARGS=(--baseline-only)
+    start_demo "$ROOT"; capture check "$(realpath_m "$BASELINES")" ;;
   check)
     check_out "${OUT:-visual/.out/check}"
     OUT=$(realpath_m "${OUT:-visual/.out/check}")
@@ -278,7 +286,10 @@ case "$MODE" in
     stop_demo
     rm -rf "$OUT/base"
     if [ -d "$CACHE/shots" ]; then cp -R "$CACHE/shots" "$OUT/base"; else mkdir -p "$OUT/base"; fi
-    kit "$OUT" compare --base /out/base --head /out/head --out /out/report
+    # Committed baselines (visual/baselines) stand in for the merge base on the scenes that have one.
+    BASELINES="$(dirname "$CONFIG")/baselines" BASELINE_ARGS=()
+    if [ -d "$BASELINES" ]; then BASELINE_ARGS=(--baselines "/work/$BASELINES"); fi
+    kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"}
     echo "visual-kit: report at ${OUT#"$ROOT"/}/report/index.html (summary: ${OUT#"$ROOT"/}/report/summary.md)"
     # The report exists even when a scene failed on the working tree, but the failure is not forgotten.
     [ "$HEAD_RC" = 0 ] || die "some scenes failed to render on the working tree (see above)"

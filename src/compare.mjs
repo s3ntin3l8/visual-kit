@@ -64,8 +64,12 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 /**
  * Compares the shots of `headDir` against `baseDir` and writes a self-contained report to `outDir`:
  * index.html (base / head / diff side by side), summary.json and summary.md.
+ *
+ * `baselinesDir` (committed baselines, same file names and metrics.json) wins over `baseDir` for the shots it
+ * has; those entries are marked `baseline`. A baseline whose shot was not rendered this time is not "removed":
+ * baselines only overlay the base, they do not define it.
  */
-export function compare({ baseDir, headDir, outDir, threshold = 0.1, maxDiffPixels = 20 }) {
+export function compare({ baseDir, headDir, outDir, baselinesDir, threshold = 0.1, maxDiffPixels = 20 }) {
   guardReplace(outDir);
   rmSync(outDir, { recursive: true, force: true });
   for (const sub of ["base", "head", "diff"]) mkdirSync(path.join(outDir, sub), { recursive: true });
@@ -73,24 +77,28 @@ export function compare({ baseDir, headDir, outDir, threshold = 0.1, maxDiffPixe
 
   const baseFiles = pngs(baseDir);
   const headFiles = pngs(headDir);
-  const baseMetrics = readMetrics(baseDir);
+  const baselineFiles = new Set(baselinesDir ? pngs(baselinesDir) : []);
+  const baselineMetrics = baselinesDir ? readMetrics(baselinesDir) : {};
+  const baseMetrics = { ...readMetrics(baseDir), ...Object.fromEntries(Object.entries(baselineMetrics).filter(([f]) => baselineFiles.has(f))) };
   const headMetrics = readMetrics(headDir);
   const entries = [];
 
   for (const file of headFiles) {
     copyFileSync(path.join(headDir, file), path.join(outDir, "head", file));
-    const missingInBase = !baseFiles.includes(file) || (baseMetrics[file]?.status >= 400 && !(headMetrics[file]?.status >= 400));
+    const baseline = baselineFiles.has(file);
+    const fileBaseDir = baseline ? baselinesDir : baseDir;
+    const missingInBase = (!baseline && !baseFiles.includes(file)) || (baseMetrics[file]?.status >= 400 && !(headMetrics[file]?.status >= 400));
     const health = metricDelta(missingInBase ? {} : baseMetrics[file], headMetrics[file]);
     if (missingInBase) {
       // A new route is where a check matters most: its findings are the whole story, not a delta.
       entries.push({ file, result: "new", pixels: 0, health });
       continue;
     }
-    copyFileSync(path.join(baseDir, file), path.join(outDir, "base", file));
-    const d = diffPngs(readFileSync(path.join(baseDir, file)), readFileSync(path.join(headDir, file)), { threshold });
+    copyFileSync(path.join(fileBaseDir, file), path.join(outDir, "base", file));
+    const d = diffPngs(readFileSync(path.join(fileBaseDir, file)), readFileSync(path.join(headDir, file)), { threshold });
     const changed = d.pixels > maxDiffPixels || d.resized;
     if (d.diff && changed) writeFileSync(path.join(outDir, "diff", file), d.diff);
-    entries.push({ file, result: changed ? "changed" : "same", pixels: d.pixels, resized: d.resized, size: d.size, health });
+    entries.push({ file, result: changed ? "changed" : "same", pixels: d.pixels, resized: d.resized, size: d.size, health, ...(baseline ? { baseline: true } : {}) });
   }
   for (const file of baseFiles) {
     if (headFiles.includes(file)) continue;
@@ -116,7 +124,7 @@ function markdown(s) {
   if (!interesting.length) return `${lines.join("\n")}Nothing changed.\n`;
   lines.push("| Shot | Result | Detail |", "| --- | --- | --- |");
   for (const e of interesting) {
-    const detail = [e.result === "changed" ? (e.resized ? `size ${e.size.base.join("×")} → ${e.size.head.join("×")}` : `${e.pixels} px differ`) : "", ...e.health].filter(Boolean).map(cellText).join("<br>");
+    const detail = [e.baseline ? "against the committed baseline" : "", e.result === "changed" ? (e.resized ? `size ${e.size.base.join("×")} → ${e.size.head.join("×")}` : `${e.pixels} px differ`) : "", ...e.health].filter(Boolean).map(cellText).join("<br>");
     lines.push(`| \`${e.file}\` | ${e.result} | ${detail} |`);
   }
   return `${lines.join("\n")}\n`;
@@ -127,7 +135,7 @@ function html(s) {
   const rows = s.entries
     .filter((e) => e.result !== "same" || e.health.length)
     .map(
-      (e) => `<section><h2>${esc(e.file)} <small>${e.result}${e.result === "changed" ? ` · ${e.pixels} px` : ""}</small></h2>
+      (e) => `<section><h2>${esc(e.file)} <small>${e.result}${e.result === "changed" ? ` · ${e.pixels} px` : ""}${e.baseline ? " · baseline" : ""}</small></h2>
 ${e.health.length ? `<ul>${e.health.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
 <div class="row"><figure><figcaption>base</figcaption>${cell("base", e.file, e.result !== "new")}</figure>
 <figure><figcaption>head</figcaption>${cell("head", e.file, e.result !== "removed")}</figure>

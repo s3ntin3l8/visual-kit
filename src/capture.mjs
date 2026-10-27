@@ -155,10 +155,11 @@ async function shoot(page, scene, variant, fullPage, cfg, outFile) {
  * Renders a profile's scenes against a running demo into `outDir`.
  * Returns { files, metrics, failures }. A scene that fails is reported, the rest still render.
  */
-export async function capture({ cfg, profile: profileName, baseUrl, outDir, routes = [], hooksFile, log = console.log }) {
+export async function capture({ cfg, profile: profileName, baseUrl, outDir, routes = [], hooksFile, onlyBaseline = false, log = console.log }) {
   const profile = PROFILES[profileName];
   if (!profile) throw new Error(`unknown profile "${profileName}" (${Object.keys(PROFILES).join(" | ")})`);
-  const scenes = selectScenes(cfg, profileName, routes);
+  const scenes = selectScenes(cfg, profileName, routes).filter((s) => !onlyBaseline || s.baseline);
+  if (onlyBaseline && !scenes.length) throw new Error(`no scene is flagged "baseline": true for the ${profileName} profile`);
   if (!scenes.length) throw new Error(`no scene matches profile "${profileName}"${routes.length ? ` and --routes ${routes.join(",")}` : ""}`);
 
   const loaded = await loadHooks(hooksFile);

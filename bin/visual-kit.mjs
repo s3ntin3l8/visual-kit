@@ -13,8 +13,8 @@ import { PROFILES } from "../src/profiles.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `usage:
-  visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b]
-  visual-kit compare --base DIR --head DIR --out DIR [--max-diff-pixels N] [--fail-on-diff]
+  visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b] [--baseline-only]
+  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR] [--max-diff-pixels N] [--fail-on-diff]
   visual-kit env --config FILE      shell assignments for the host launcher
   visual-kit host-files             tar of host/ on stdout (the launcher the Makefile extracts)
   visual-kit validate --config FILE
@@ -27,6 +27,8 @@ const options = {
   routes: { type: "string", default: "" },
   base: { type: "string" },
   head: { type: "string" },
+  baselines: { type: "string" },
+  "baseline-only": { type: "boolean", default: false },
   "max-diff-pixels": { type: "string", default: "20" },
   "fail-on-diff": { type: "boolean", default: false },
 };
@@ -53,7 +55,7 @@ async function main() {
       const cfg = loadConfig(values.config);
       const hooksFile = path.join(path.dirname(values.config), "hooks.mjs");
       const routes = values.routes.split(",").map((r) => r.trim()).filter(Boolean);
-      const { files, failures } = await capture({ cfg, profile: arg, baseUrl: values.url, outDir: path.resolve(values.out), routes, hooksFile });
+      const { files, failures } = await capture({ cfg, profile: arg, baseUrl: values.url, outDir: path.resolve(values.out), routes, hooksFile, onlyBaseline: values["baseline-only"] });
       console.log(`visual-kit: ${files.length} file(s) -> ${values.out}`);
       if (failures.length) {
         console.error(`visual-kit: ${failures.length} capture(s) failed:\n  - ${failures.join("\n  - ")}`);
@@ -65,7 +67,7 @@ async function main() {
       if (!values.base || !values.head || !values.out) throw new Error("compare needs --base, --head and --out");
       const maxDiffPixels = Number(values["max-diff-pixels"]);
       if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
-      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), maxDiffPixels });
+      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), maxDiffPixels });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
       return values["fail-on-diff"] && (s.changed || s.removed) ? 2 : 0;
     }

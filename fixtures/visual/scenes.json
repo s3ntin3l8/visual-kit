@@ -25,7 +25,8 @@
         {
           "wait": 400
         }
-      ]
+      ],
+      "baseline": true
     },
     {
       "name": "menu",

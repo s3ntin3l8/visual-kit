@@ -305,3 +305,48 @@ test("config: hostTimeoutSec is a bounded integer", () => {
   assert.equal(loadConfig(config({ hostTimeoutSec: 60 })).hostTimeoutSec, 60);
   assert.throws(() => loadConfig(config({ hostTimeoutSec: 0 })), /hostTimeoutSec/);
 });
+
+test("compare: a committed baseline stands in for the base, with its own metrics, and is never reported removed", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-baseline-"));
+  for (const side of ["base", "head", "baselines"]) mkdirSync(path.join(dir, side));
+  const write = (side, file, fill) => writeFileSync(path.join(dir, side, file), PNG.sync.write(png(10, 10, fill)));
+  const red = [200, 0, 0, 255];
+  const blue = [0, 0, 200, 255];
+  write("base", "flagged.png", red); // what the merge base rendered
+  write("baselines", "flagged.png", blue); // what the team committed
+  write("head", "flagged.png", blue);
+  write("base", "plain.png", red);
+  write("head", "plain.png", red);
+  write("baselines", "gone.png", red); // a baseline whose scene was not rendered this time
+  writeFileSync(path.join(dir, "base", "metrics.json"), JSON.stringify({ "flagged.png": { status: 200, overflow: true } }));
+  writeFileSync(path.join(dir, "baselines", "metrics.json"), JSON.stringify({ "flagged.png": { status: 200, overflow: false } }));
+  writeFileSync(path.join(dir, "head", "metrics.json"), JSON.stringify({ "flagged.png": { status: 200, overflow: false } }));
+  const s = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "baselines"), outDir: path.join(dir, "r") });
+  const byFile = Object.fromEntries(s.entries.map((e) => [e.file, e]));
+  assert.equal(byFile["flagged.png"].result, "same", "compared with the baseline, not the merge base");
+  assert.equal(byFile["flagged.png"].baseline, true);
+  assert.deepEqual(byFile["flagged.png"].health, [], "the baseline's metrics are the base (no overflow fixed)");
+  assert.equal(byFile["plain.png"].baseline, undefined);
+  assert.equal(byFile["gone.png"], undefined);
+  assert.equal(s.removed, 0);
+  // Without the baselines the same head differs from the merge base.
+  const without = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "r2") });
+  assert.equal(without.entries.find((e) => e.file === "flagged.png").result, "changed");
+});
+
+test("compare: a changed shot against its baseline says so in the report", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-baseline-md-"));
+  for (const side of ["base", "head", "baselines"]) mkdirSync(path.join(dir, side));
+  const write = (side, fill) => writeFileSync(path.join(dir, side, "a.png"), PNG.sync.write(png(10, 10, fill)));
+  write("base", [1, 1, 1, 255]);
+  write("baselines", [1, 1, 1, 255]);
+  write("head", [250, 250, 250, 255]);
+  compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "baselines"), outDir: path.join(dir, "r") });
+  assert.match(readFileSync(path.join(dir, "r", "summary.md"), "utf8"), /against the committed baseline/);
+  assert.match(readFileSync(path.join(dir, "r", "index.html"), "utf8"), /· baseline/);
+});
+
+test("config: a baseline scene needs the check tag", () => {
+  assert.equal(loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true }] })).scenes[0].baseline, true);
+  assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true, tags: ["presentation"] }] })), /add the "check" tag/);
+});

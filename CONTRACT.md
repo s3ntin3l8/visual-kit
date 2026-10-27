@@ -25,7 +25,7 @@ the launcher warns.
    binds only to loopback, and tears itself down on `SIGTERM`.
 2. **`visual/Dockerfile`** with one line: `FROM ghcr.io/s3ntin3l8/visual-kit:<version>`. Dependabot bumps it.
 3. **`visual/scenes.json`** (see below), and optionally **`visual/hooks.mjs`** and **`visual/host-hooks.sh`**.
-4. **Four make targets**, thin wrappers around `visual/.kit/run.sh`, which is extracted from the image
+4. **Four make targets** (a fifth, `visual-baseline`, only for repos that commit baselines), thin wrappers around `visual/.kit/run.sh`, which is extracted from the image
    and never committed.
 5. **`.gitignore`** entries: `visual/.kit/`, `visual/.out/`, `docs/audit/assets/`, `*.staging`.
 
@@ -48,6 +48,9 @@ screenshots-audit: visual/.kit/run.sh ## Audit evidence into docs/audit/assets/$
 
 visual-check: visual/.kit/run.sh ## Before/after of ROUTES against BASE (default origin/main)
 	$(VISUAL_RUN) check $(if $(ROUTES),--routes "$(ROUTES)") $(if $(BASE),--base "$(BASE)") $(if $(FORCE),--force)
+
+visual-baseline: visual/.kit/run.sh ## Only for repos with "baseline": true scenes: regenerate visual/baselines
+	$(VISUAL_RUN) baseline $(if $(FORCE),--force)
 ```
 
 ## Targets
@@ -58,6 +61,8 @@ visual-check: visual/.kit/run.sh ## Before/after of ROUTES against BASE (default
 | `make screenshots-landing OUT=dir` | scenes tagged `presentation`, landing profile | `dir/` | by personal-landing |
 | `make screenshots-audit AUDIT=YYYY-MM-<scope>-<topic>` | scenes tagged `audit`, every form factor | `docs/audit/assets/<slug>/` | no |
 | `make visual-check [ROUTES=a,b] [BASE=ref]` | scenes tagged `check`, base vs working tree | `visual/.out/check/` | no |
+
+| `make visual-baseline` | scenes with `"baseline": true`, check profile | `visual/baselines/` (replaced wholesale, never narrowed by `ROUTES`) | yes |
 
 `ROUTES` is a comma-separated list of scene names or paths. A path matches itself and everything below it
 (`/cases` and `/cases/` both match `/cases`, `/cases?x` and `/cases/ADV-024-A`).
@@ -111,6 +116,7 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 }
 ```
 
+- **`baseline`** (default `false`): commit this scene's check shots, see **Committed baselines**.
 - **`hostTimeoutSec`**: how long `host()` waits for `host-hooks.sh` (1–600, default 30).
 - **`cacheKeyFiles`**: a check caches its base capture by merge base, image, routes, `scenes.json`, `hooks.mjs`,
   `host-hooks.sh` and `DEMO_NOW`. The base runs against the working tree's `baseDeps`, so a dependency change there can change
@@ -136,6 +142,25 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 - **`hooks.mjs`** may export `beforeScene({context, page, scene, variant, cfg})` (log in, dismiss a banner) and
   `settle({page, scene})` (app-specific readiness, e.g. wait for charts). Throw to fail the scene. Both also
   receive `host(name, ...args)`, see **Host hooks**.
+
+### Committed baselines (optional)
+
+A check normally computes its base by rendering the merge base, which keeps PNGs out of git but means a
+reviewer on GitHub does not see the visual diff in the PR. For a few key screens a repo can commit the baseline
+instead, and GitHub's image diff does the reviewing:
+
+- Flag the scene `"baseline": true` (it needs the `check` tag). `make visual-baseline` renders only the flagged
+  scenes with the `check` profile into `visual/baselines/` (the shots plus `metrics.json`, and the `.visual-kit`
+  marker that lets the tool replace the folder); commit the result with the change that moved the page.
+- `make visual-check` still renders the merge base for everything, then, for every shot that has a committed
+  baseline, compares the working tree against that file (and its metrics) instead. The report marks those
+  entries `baseline`. A flagged scene without a baseline yet behaves like any other. A baseline whose scene was
+  not rendered in this run (a narrower `ROUTES`, a removed scene) is ignored, never reported as removed; run
+  `make visual-baseline` to drop it.
+- Baselines are only valid from the pinned image (its browser and fonts), and a bump of the image or of a
+  viewport size changes them: regenerate and commit them in that PR.
+- Unflagged scenes, and repos without `visual/baselines/`, behave exactly as before. `--fail-on-diff` stays
+  opt-in.
 
 ### Host hooks
 
