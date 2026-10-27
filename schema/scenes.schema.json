@@ -105,7 +105,7 @@
             "css": { "type": "string", "description": "Arbitrary CSS injected before the shot." }
           }
         },
-        "stills": { "type": "boolean", "default": true, "description": "false renders only the loop (needs `loop`): no stills for any viewport or scheme." },
+        "stills": { "type": "boolean", "default": true, "description": "false renders only the loop: needs `loop` and the `presentation` tag, and renders no stills for any viewport or scheme." },
         "loop": {
           "type": "object",
           "additionalProperties": false,
