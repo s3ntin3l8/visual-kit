@@ -42,7 +42,8 @@
       ],
       "settle": "#menu",
       "target": "#menu",
-      "padding": 16
+      "padding": 16,
+      "baseline": true
     },
     {
       "name": "list",
