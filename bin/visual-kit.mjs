@@ -2,7 +2,7 @@
 // visual-kit: runs inside the image. The host-side launcher (host/run.sh) boots the demo and
 // calls these subcommands; see CONTRACT.md.
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -14,7 +14,7 @@ import { PROFILES } from "../src/profiles.mjs";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `usage:
   visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b] [--baseline-only]
-  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR] [--max-diff-pixels N] [--fail-on-diff]
+  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR [--config FILE]] [--max-diff-pixels N] [--fail-on-diff]
   visual-kit env --config FILE      shell assignments for the host launcher
   visual-kit host-files             tar of host/ on stdout (the launcher the Makefile extracts)
   visual-kit validate --config FILE
@@ -67,7 +67,7 @@ async function main() {
       if (!values.base || !values.head || !values.out) throw new Error("compare needs --base, --head and --out");
       const maxDiffPixels = Number(values["max-diff-pixels"]);
       if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
-      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), maxDiffPixels });
+      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.baselines && values.config && existsSync(values.config) ? loadConfig(values.config) : undefined, maxDiffPixels });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
       return values["fail-on-diff"] && (s.changed || s.removed) ? 2 : 0;
     }

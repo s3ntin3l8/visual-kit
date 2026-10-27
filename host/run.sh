@@ -286,9 +286,10 @@ case "$MODE" in
     stop_demo
     rm -rf "$OUT/base"
     if [ -d "$CACHE/shots" ]; then cp -R "$CACHE/shots" "$OUT/base"; else mkdir -p "$OUT/base"; fi
-    # Committed baselines (visual/baselines) stand in for the merge base on the scenes that have one.
+    # Committed baselines (visual/baselines) stand in for the merge base on the scenes that have one; the config
+    # lets the report tell whether they were rendered with today's viewport table.
     BASELINES="$(dirname "$CONFIG")/baselines" BASELINE_ARGS=()
-    if [ -d "$BASELINES" ]; then BASELINE_ARGS=(--baselines "/work/$BASELINES"); fi
+    if [ -d "$BASELINES" ]; then BASELINE_ARGS=(--baselines "/work/$BASELINES" --config "$CONFIG"); fi
     kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"}
     echo "visual-kit: report at ${OUT#"$ROOT"/}/report/index.html (summary: ${OUT#"$ROOT"/}/report/summary.md)"
     # The report exists even when a scene failed on the working tree, but the failure is not forgotten.

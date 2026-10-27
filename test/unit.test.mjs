@@ -11,6 +11,7 @@ import { lastChangeSeconds, loopEnd } from "../src/freeze.mjs";
 import { sceneUrl } from "../src/capture.mjs";
 import { createHost } from "../src/hostcall.mjs";
 import { PROFILES, selectScenes, variants } from "../src/profiles.mjs";
+import * as provenance from "../src/provenance.mjs";
 
 function config(extra = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "vk-"));
@@ -356,4 +357,45 @@ test("config: a baseline scene needs the check tag", () => {
   assert.equal(loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true }] })).scenes[0].baseline, true);
   assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true, tags: ["presentation"] }] })), /add the "check" tag/);
   assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true, tags: ["check", "presentation"], stills: false, loop: {} }] })), /needs stills/);
+});
+
+test("provenance: staleness names what changed, and a runner patch release is not stale", () => {
+  const now = { runner: "0.2.1", playwright: "1.64.1", viewports: "aaaa" };
+  assert.deepEqual(provenance.staleness({ runner: "0.2.0", playwright: "1.64.1", viewports: "aaaa" }, now), []);
+  assert.match(provenance.staleness({ runner: "0.2.0", playwright: "1.63.0", viewports: "aaaa" }, now).join(), /Playwright 1\.63\.0 → 1\.64\.1/);
+  assert.match(provenance.staleness({ runner: "0.2.0", playwright: "1.64.1", viewports: "bbbb" }, now).join(), /viewport table/);
+  assert.match(provenance.staleness({ runner: "0.1.9", playwright: "1.64.1", viewports: "aaaa" }, now).join(), /visual-kit 0\.1\.9 → 0\.2\.1/);
+  assert.match(provenance.staleness(null, now).join(), /no provenance\.json/);
+  // Without a config there is no viewport hash to compare: that part is skipped.
+  assert.deepEqual(provenance.staleness({ runner: "0.2.0", playwright: "1.64.1", viewports: "bbbb" }, { runner: "0.2.0", playwright: "1.64.1" }), []);
+});
+
+test("provenance: the viewport hash follows the effective check table, not key order", () => {
+  const base = loadConfig(config());
+  const wider = loadConfig(config({ viewports: { desktop: { width: 1600, height: 900, scale: 1 } } }));
+  assert.notEqual(provenance.current(base).viewports, provenance.current(wider).viewports);
+  assert.equal(provenance.current(base).viewports, provenance.current(loadConfig(config())).viewports);
+});
+
+test("compare: stale baselines are a notice in the report, never a verdict", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-stale-"));
+  for (const side of ["base", "head", "baselines"]) mkdirSync(path.join(dir, side));
+  for (const side of ["base", "head", "baselines"]) writeFileSync(path.join(dir, side, "a.png"), PNG.sync.write(png(10, 10, [1, 1, 1, 255])));
+  const cfg = loadConfig(config());
+  const run = (out) => compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "baselines"), outDir: path.join(dir, out), cfg });
+  // Matching provenance: no notice.
+  writeFileSync(path.join(dir, "baselines", "provenance.json"), JSON.stringify(provenance.current(cfg)));
+  const fresh = run("fresh");
+  assert.deepEqual(fresh.baselines, { stale: false, reasons: [] });
+  assert.doesNotMatch(readFileSync(path.join(dir, "fresh", "summary.md"), "utf8"), /stale/);
+  // Another browser build: notice in all three outputs, same verdicts.
+  writeFileSync(path.join(dir, "baselines", "provenance.json"), JSON.stringify({ ...provenance.current(cfg), playwright: "0.0.1" }));
+  const stale = run("stale");
+  assert.equal(stale.baselines.stale, true);
+  assert.match(readFileSync(path.join(dir, "stale", "summary.md"), "utf8"), /baselines look stale:\*\* Playwright 0\.0\.1/);
+  assert.match(readFileSync(path.join(dir, "stale", "index.html"), "utf8"), /baselines look stale/);
+  assert.deepEqual([stale.changed, stale.new, stale.removed, stale.same], [fresh.changed, fresh.new, fresh.removed, fresh.same]);
+  // No baselines at all: no `baselines` key.
+  const none = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "none") });
+  assert.equal(none.baselines, undefined);
 });

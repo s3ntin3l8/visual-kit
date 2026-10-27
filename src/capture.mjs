@@ -8,6 +8,7 @@ import { padRect } from "./clip.mjs";
 import { pageMetrics } from "./metrics.mjs";
 import { recordLoop } from "./loop.mjs";
 import { MARKER, guardReplace } from "./output.mjs";
+import * as provenance from "./provenance.mjs";
 
 const STEP_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 30_000;
@@ -225,6 +226,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   }
 
   if (Object.keys(metrics).length) writeFileSync(path.join(stage, "metrics.json"), `${JSON.stringify(metrics, null, 2)}\n`);
+  if (onlyBaseline) provenance.write(stage, cfg);
 
   // A check compares whatever rendered (a scene the base lacks fails there and shows as "new"), so its
   // partial output is useful. Everything else is a deliverable: a partial set must never replace a

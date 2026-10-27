@@ -149,15 +149,21 @@ reviewer on GitHub does not see the visual diff in the PR. For a few key screens
 instead, and GitHub's image diff does the reviewing:
 
 - Flag the scene `"baseline": true` (it needs the `check` tag). `make visual-baseline` renders only the flagged
-  scenes with the `check` profile into `visual/baselines/` (the shots plus `metrics.json`, and the `.visual-kit`
-  marker that lets the tool replace the folder); commit the result with the change that moved the page.
+  scenes with the `check` profile into `visual/baselines/` (the shots plus `metrics.json`, `provenance.json`, and
+  the `.visual-kit` marker that lets the tool replace the folder); commit the result with the change that moved the page.
 - `make visual-check` still renders the merge base for everything, then, for every shot that has a committed
   baseline, compares the working tree against that file (and its metrics) instead. The report marks those
   entries `baseline`. A flagged scene without a baseline yet behaves like any other. A baseline whose scene was
   not rendered in this run (a narrower `ROUTES`, a removed scene) is ignored, never reported as removed; run
   `make visual-baseline` to drop it. A failed `visual-baseline` leaves the committed set untouched.
 - Baselines are only valid from the pinned image (its browser and fonts), and a bump of the image or of a
-  viewport size changes them: regenerate and commit them in that PR.
+  viewport size changes them: regenerate and commit them in that PR. `provenance.json` records what rendered
+  them (`runner`, the pinned `playwright`, and a hash of the `check` viewport table); when a check finds the
+  recorded set differs from the current runner (another Playwright, another viewport table, another visual-kit
+  major.minor, or no `provenance.json`), `summary.md`, `index.html` and `summary.json` (`baselines.stale`,
+  `baselines.reasons`) carry a "baselines look stale" notice. It never changes a verdict, a count or the exit
+  code, and a runner patch release does not trigger it. Fonts come from the image's packages and are not
+  versioned, so regenerate after any image bump even when no notice appears.
 - Unflagged scenes, and repos without `visual/baselines/`, behave exactly as before. `--fail-on-diff` stays
   opt-in.
 

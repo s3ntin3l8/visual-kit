@@ -3,6 +3,7 @@ import path from "node:path";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { MARKER, guardReplace } from "./output.mjs";
+import * as provenance from "./provenance.mjs";
 
 const pngs = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".png")).sort() : []);
 const readMetrics = (dir) => (existsSync(path.join(dir, "metrics.json")) ? JSON.parse(readFileSync(path.join(dir, "metrics.json"), "utf8")) : {});
@@ -68,8 +69,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
  * `baselinesDir` (committed baselines, same file names and metrics.json) wins over `baseDir` for the shots it
  * has; those entries are marked `baseline`. A baseline whose shot was not rendered this time is not "removed":
  * baselines only overlay the base, they do not define it.
+ *
+ * With baselines, `summary.baselines` says whether they are stale (see provenance.mjs); that is a notice in the
+ * report, never a verdict. `cfg` (the repo's scenes.json) lets the viewport table take part in that comparison.
  */
-export function compare({ baseDir, headDir, outDir, baselinesDir, threshold = 0.1, maxDiffPixels = 20 }) {
+export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold = 0.1, maxDiffPixels = 20 }) {
   if (baselinesDir && !existsSync(baselinesDir)) throw new Error(`baselines folder ${baselinesDir} does not exist`);
   guardReplace(outDir);
   rmSync(outDir, { recursive: true, force: true });
@@ -108,7 +112,8 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, threshold = 0.
   }
 
   const count = (r) => entries.filter((e) => e.result === r).length;
-  const summary = { total: entries.length, changed: count("changed"), new: count("new"), removed: count("removed"), same: count("same"), entries };
+  const reasons = baselinesDir ? provenance.staleness(provenance.read(baselinesDir), provenance.current(cfg)) : [];
+  const summary = { total: entries.length, changed: count("changed"), new: count("new"), removed: count("removed"), same: count("same"), ...(baselinesDir ? { baselines: { stale: reasons.length > 0, reasons } } : {}), entries };
   writeFileSync(path.join(outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeFileSync(path.join(outDir, "summary.md"), markdown(summary));
   writeFileSync(path.join(outDir, "index.html"), html(summary));
@@ -120,6 +125,7 @@ const cellText = (t) => String(t).replace(/\s+/g, " ").replaceAll("|", "\\|");
 function markdown(s) {
   const lines = ["## Visual check", ""];
   lines.push(`${s.total} shots compared: **${s.changed} changed**, ${s.new} new, ${s.removed} removed, ${s.same} identical.`, "");
+  if (s.baselines?.stale) lines.push(`> **The committed baselines look stale:** ${s.baselines.reasons.join("; ")}. Differences below may only be that; regenerate them with \`make visual-baseline\`.`, "");
   if (s.total > 0 && s.new === s.total) lines.push("> **Every shot is new: the base rendered nothing.** The comparison says nothing; look at the base capture above.", "");
   const interesting = s.entries.filter((e) => e.result !== "same" || e.health.length);
   if (!interesting.length) return `${lines.join("\n")}Nothing changed.\n`;
@@ -146,7 +152,8 @@ ${e.health.length ? `<ul>${e.health.map((h) => `<li>${esc(h)}</li>`).join("")}</
   return `<!doctype html><meta charset="utf-8"><title>Visual check</title>
 <style>body{font:14px system-ui;background:#0f1115;color:#e6e6e6;margin:24px}small{color:#8a8f98;font-weight:400}
 .row{display:flex;gap:12px;align-items:flex-start}figure{flex:1;margin:0;min-width:0}img{width:100%;border:1px solid #2a2f37}
-figcaption{color:#8a8f98;margin-bottom:4px}section{margin-bottom:40px}li{color:#e0b341}</style>
+figcaption{color:#8a8f98;margin-bottom:4px}section{margin-bottom:40px}li{color:#e0b341}.stale{color:#e0b341}</style>
 <h1>Visual check</h1><p>${s.total} shots: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical.</p>
+${s.baselines?.stale ? `<p class="stale"><b>The committed baselines look stale:</b> ${esc(s.baselines.reasons.join("; "))}. Differences below may only be that; regenerate them with <code>make visual-baseline</code>.</p>` : ""}
 ${rows || "<p>Nothing changed.</p>"}`;
 }
