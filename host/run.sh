@@ -7,11 +7,44 @@
 # An output folder is replaced wholesale, so it must be one this tool wrote (it leaves a .visual-kit file),
 # an empty one, or --force. It can never be the repository, one of its parents, or inside .git.
 #
-# Needs bash, git, docker and GNU coreutils (realpath -m, sha256sum); flock is optional but recommended.
-# Environment: VISUAL_KIT_IMAGE (required, set by the Makefile), VISUAL_CONFIG (default visual/scenes.json).
+# Needs bash, git and docker; flock is optional but recommended. Runs on Linux and macOS (no GNU coreutils needed).
+# Environment: VISUAL_KIT_IMAGE (required, set by the Makefile), VISUAL_CONFIG (default visual/scenes.json),
+# VISUAL_KIT_HOST_NETWORK=host|bridge (default: host on Linux, bridge elsewhere; see CONTRACT.md).
 set -euo pipefail
 
 die() { echo "visual-kit: $*" >&2; exit 1; }
+
+# realpath -m (the path need not exist) without GNU coreutils: absolute, with . and .. folded away, and the part
+# that exists resolved through symlinks (so a link to the repository is still the repository). It folds `..`
+# lexically before resolving, so `link/..` is the link's own parent here and the link target's parent for GNU
+# realpath; both are checked against the repository, which is all the guards need.
+realpath_m() {
+  if realpath -m / >/dev/null 2>&1; then realpath -m "$1"; return; fi
+  local path=$1 part out=() head tail=""
+  case "$path" in /*) ;; *) path="$PWD/$path" ;; esac
+  local IFS=/
+  set -f
+  for part in $path; do
+    case "$part" in
+      "" | .) ;;
+      ..) [ ${#out[@]} -eq 0 ] || unset 'out[${#out[@]}-1]' ;;
+      *) out+=("$part") ;;
+    esac
+  done
+  set +f
+  head="/${out[*]-}"
+  unset IFS
+  while [ ! -d "$head" ] && [ "$head" != / ]; do tail="/${head##*/}$tail"; head=${head%/*}; [ -n "$head" ] || head=/; done
+  head=$(cd -P "$head" && pwd -P)
+  echo "${head%/}$tail" | sed 's#^$#/#'
+}
+
+# sha256 of stdin, as the bare hex digest.
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1 && echo | sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
+  else shasum -a 256 | cut -d' ' -f1
+  fi
+}
 
 MODE=${1:-}; shift || true
 case "$MODE" in landing | readme | audit | check) ;; *) die "usage: run.sh <landing|readme|audit|check> [options]" ;; esac
@@ -30,6 +63,12 @@ while [ $# -gt 0 ]; do
 done
 
 IMAGE=${VISUAL_KIT_IMAGE:?VISUAL_KIT_IMAGE is not set}
+if [ -n "${VISUAL_KIT_HOST_NETWORK:-}" ]; then NETWORK=$VISUAL_KIT_HOST_NETWORK
+elif [ "$(uname -s)" = Linux ]; then NETWORK=host
+else NETWORK=bridge
+fi
+[ "$NETWORK" != bridge ] || [ "$(uname -s)" != Linux ] || echo "visual-kit: bridge networking on Linux reaches the demo through docker0, so it must listen beyond 127.0.0.1; host networking is the default there" >&2
+case "$NETWORK" in host | bridge) ;; *) die "VISUAL_KIT_HOST_NETWORK must be host or bridge, got \"$NETWORK\"" ;; esac
 ROOT=$(git rev-parse --show-toplevel)
 CONFIG=${VISUAL_CONFIG:-visual/scenes.json}
 cd "$ROOT"
@@ -46,7 +85,7 @@ claim_dir() {
 
 # Refuse an output path that would take the checkout (or its parents) with it.
 check_out() {
-  local out; out=$(realpath -m "$1")
+  local out; out=$(realpath_m "$1")
   [ "$out" != / ] || die "refusing --out /"
   case "$ROOT/" in "$out"/*) die "refusing --out $1: it is the repository or one of its parents" ;; esac
   case "$out/" in "$ROOT/.git/"*) die "refusing --out $1: it is inside .git" ;; esac
@@ -55,9 +94,11 @@ check_out() {
 # Run the image with the repo mounted read-only at /work; $1 is an optional writable host dir at /out.
 kit() {
   local out_dir=$1; shift
-  local mounts=(-v "$ROOT:/work:ro")
+  local mounts=(-v "$ROOT:/work:ro") net=(--network host)
+  # Docker Desktop (macOS, Windows) has no usable host networking: reach the demo through host.docker.internal.
+  if [ "$NETWORK" = bridge ]; then net=(--add-host host.docker.internal:host-gateway -e VISUAL_KIT_HOST_ALIAS=host.docker.internal); fi
   [ -n "$out_dir" ] && mounts+=(-v "$out_dir:/out")
-  docker run --rm --ipc=host --network host --user "$(id -u):$(id -g)" -e HOME=/tmp -e "VISUAL_KIT_FORCE=$FORCE" "${mounts[@]}" -w /work "$IMAGE" "$@"
+  docker run --rm --ipc=host "${net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -e "VISUAL_KIT_FORCE=$FORCE" "${mounts[@]}" -w /work "$IMAGE" "$@"
 }
 
 # DEMO_START DEMO_URL DEMO_READY DEMO_TIMEOUT BASE_DEPS (+ the demo's exported env).
@@ -69,7 +110,11 @@ DEMO_PID="" DEMO_LOG=$(mktemp)
 start_demo() {
   local dir=$1
   : >"$DEMO_LOG"
-  ( cd "$dir" && exec setsid bash -c "$DEMO_START" ) >"$DEMO_LOG" 2>&1 &
+  # Own process group, so stop_demo can take the demo's children down with it (macOS has no setsid).
+  command -v setsid >/dev/null 2>&1 || command -v perl >/dev/null 2>&1 || die "neither setsid nor perl found; one of them is needed to start the demo in its own process group"
+  if command -v setsid >/dev/null 2>&1; then ( cd "$dir" && exec setsid bash -c "$DEMO_START" ) >"$DEMO_LOG" 2>&1 &
+  else ( cd "$dir" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash -c "$DEMO_START" ) >"$DEMO_LOG" 2>&1 &
+  fi
   DEMO_PID=$!
   local deadline=$((SECONDS + DEMO_TIMEOUT))
   until grep -Eq "$DEMO_READY" "$DEMO_LOG"; do
@@ -108,23 +153,23 @@ case "$MODE" in
   landing)
     [ -n "$OUT" ] || die "landing needs --out DIR"
     check_out "$OUT"
-    start_demo "$ROOT"; capture landing "$(realpath -m "$OUT")" ;;
+    start_demo "$ROOT"; capture landing "$(realpath_m "$OUT")" ;;
   readme)
     check_out "${OUT:-docs/screenshots}"
-    start_demo "$ROOT"; capture readme "$(realpath -m "${OUT:-docs/screenshots}")" ;;
+    start_demo "$ROOT"; capture readme "$(realpath_m "${OUT:-docs/screenshots}")" ;;
   audit)
     [ -n "$SLUG" ] || die "audit needs --slug YYYY-MM-<scope>-<topic>"
     [[ "$SLUG" =~ ^[0-9]{4}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "slug must look like YYYY-MM-<scope>-<topic>, got \"$SLUG\""
     start_demo "$ROOT"; capture audit "$ROOT/docs/audit/assets/$SLUG" ;;
   check)
     check_out "${OUT:-visual/.out/check}"
-    OUT=$(realpath -m "${OUT:-visual/.out/check}")
+    OUT=$(realpath_m "${OUT:-visual/.out/check}")
     claim_dir "$OUT"
     MERGE_BASE=$(git merge-base HEAD "$BASE_REF") || die "no merge base with $BASE_REF (git fetch origin?)"
     IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")
     HOOKS="$(dirname "$CONFIG")/hooks.mjs"
-    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" | sha256sum | cut -c1-16)
-    CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")-$(printf '%s' "$ROOT" | sha256sum | cut -c1-8)"
+    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" | sha256 | cut -c1-16)
+    CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")-$(printf '%s' "$ROOT" | sha256 | cut -c1-8)"
     CACHE="$CACHE_ROOT/$KEY"
     mkdir -p "$CACHE_ROOT"
     # One check at a time per checkout: they share the cache, the worktree, the output and the demo port.

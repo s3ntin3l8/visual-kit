@@ -21,6 +21,21 @@ jobs:
       - run: npm run lint
       - run: npm run test:unit
 
+  # The launcher's guards against a stub docker: no container needed, so it also runs where it must stay portable.
+  launcher:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node --test test/launcher.test.mjs
+
   # The screenshots only mean something in the pinned image: same Chromium, same fonts.
   # Keep the tag in step with package.json's playwright version and the Dockerfile.
   e2e:
