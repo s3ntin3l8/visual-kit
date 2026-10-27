@@ -100,8 +100,9 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 
 - **Tags** pick the workflows a scene belongs to: `presentation` (README and landing), `check`, `audit`.
   Default `["check", "audit"]`.
-- **`stills`** (default `true`): `false` makes a loop-only scene. It needs `loop`, renders no PNG for any
-  viewport or scheme, and is skipped by `check` and `audit` (they record no loops). An empty `viewports` list is
+- **`stills`** (default `true`): `false` makes a loop-only scene. It needs `loop` and the `presentation` tag
+  (only `landing` and `readme` record loops; `check` and `audit` skip it, so any other tag set would render it
+  nowhere, which validation refuses). It renders no PNG for any viewport or scheme. An empty `viewports` list is
   refused; use `stills: false`.
 - **Steps** are declarative, one action each: `click`, `hover`, `fill` (+`value`), `press`, `waitFor`,
   `wait` (≤ 5000 ms). Selectors are Playwright selectors. There is no code in the config.
@@ -145,7 +146,8 @@ For each app it pulls with `make screenshots-landing OUT=<dir>`:
 
 - only `*.png`, `*.webm`, `*.mp4`, `*.jpg` files (the `.visual-kit` marker is ignored);
 - stills named `<scene>-desktop.png` / `<scene>-mobile.png`, 3200×2000 / 1170×2532 (±1px) for viewport-sized
-  scenes (a `target` scene has the element's size, so only the ratio-to-scale rule applies);
+  scenes (a `target` scene has the element's size, so only the ratio-to-scale rule applies); a loop-only scene
+  (`stills: false`) has no stills, only its loop;
 - each loop as a complete `webm` + `mp4` + `jpg` triplet.
 
 ## Determinism checklist for a new repo
