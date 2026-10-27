@@ -17,6 +17,12 @@ case " $* " in
         if [ -f "$dir/res-t" ]; then cp "$dir/res-t" "$STUB_LOG.res"
         elif [ -z "${STUB_KEEP_REQUEST-}" ]; then rm -f "$dir/req-t"; fi # the runner withdraws a request it gave up on
         # The capture outlives the request for STUB_LINGER seconds, then says whether the hook (pid in STUB_PIDFILE) is still alive.
+        # A second request, filed once the first was answered: proves the watcher went on serving.
+        if [ -n "${STUB_HOSTCALL2-}" ] && [ -f "$dir/res-t" ]; then
+          printf '%b' "$STUB_HOSTCALL2" >"$dir/req-u.tmp" && mv "$dir/req-u.tmp" "$dir/req-u"
+          for _ in $(seq 100); do [ -f "$dir/res-u" ] && break; sleep 0.1; done
+          cp "$dir/res-u" "$STUB_LOG.res2" 2>/dev/null
+        fi
         sleep "${STUB_LINGER:-0}"
         if [ -n "${STUB_PIDFILE-}" ]; then
           if kill -0 "$(cat "$STUB_PIDFILE" 2>/dev/null)" 2>/dev/null; then echo alive; else echo gone; fi >"$STUB_LOG.alive"

@@ -178,6 +178,7 @@ describe("launcher host hooks", { timeout: 60_000 }, () => {
   big) head -c 70000 /dev/zero | tr '\\0' x; : >"$2/finished" ;;
   hang) echo $$ >"$2/hook.pid"; exec sleep 30 ;;
   huge) head -c 41943040 /dev/zero | tr '\\0' x; du -sk "$TMPDIR" >"$2/du"; : >"$2/finished" ;;
+  linger) printf 'partial'; ( exec sleep 5 ) & ;;
   stubborn) trap '' TERM; echo $$ >"$2/hook.pid"; while :; do sleep 1; done ;;
 esac
 `;
@@ -228,6 +229,13 @@ esac
     assert.equal(readFileSync(`${r.log}.alive`, "utf8").trim(), "gone", "stopped within the linger, not at the end of the capture");
     assert.match(res.out, /host hook 'hang' stopped: the capture gave up on it/);
     assert.equal(existsSync(`${r.log}.res`), false, "nobody reads an answer to an abandoned request");
+  });
+
+  test("output is kept when the hook leaves a process holding its stdout, and the next request is still served", () => {
+    const r = withHooks("hook-linger", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "linger\n", STUB_HOSTCALL2: "echo\nx\n" } });
+    assert.equal(answer(r), "0\npartial");
+    assert.equal(readFileSync(`${r.log}.res2`, "utf8"), "0\nx|");
   });
 
   test("an abandoned hook that ignores TERM is killed after the grace period", () => {

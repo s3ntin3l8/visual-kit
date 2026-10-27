@@ -110,12 +110,17 @@ eval "$HOST_ENV"
 # writes req-<n> files (name, then one argument per line) into a directory mounted at /hostcall; this watcher
 # runs `bash host-hooks.sh <name> <demo-dir> <args…>` from the checkout's copy of the script and answers with
 # res-<n> (the exit code, then stdout cut at 64 KiB). Requests are served one at a time. The hook's stdout goes
-# through a FIFO into a sink that keeps the first 64 KiB and drains the rest, so a chatty hook neither fills the
-# temp dir nor is interrupted. The runner removes req-<n> when it gives up (hostTimeoutSec): the watcher notices
-# while the hook runs and stops its process group. See CONTRACT.md.
+# through a FIFO (pipe-<n>) into a sink that stores the first 64 KiB in out-<n> and drains the rest, so a chatty
+# hook neither fills the temp dir nor is interrupted. The runner removes req-<n> when it gives up
+# (hostTimeoutSec): the watcher notices while the hook runs and stops its process group. See CONTRACT.md.
 HOST_HOOKS=$(realpath_m "$(dirname "$CONFIG")/host-hooks.sh")
 WATCH_PID="" HOSTCALL="" DEMO_DIR="" KIT_EXTRA=() CAPTURE_ARGS=()
-# Takes a hook's process group down: TERM, a grace period, then KILL.
+# Replaces a subshell with the command in its own process group (setsid, or perl where macOS has none).
+in_group() {
+  if command -v setsid >/dev/null 2>&1; then exec setsid "$@"; fi
+  exec perl -e 'setpgrp(0, 0); exec @ARGV' "$@"
+}
+# Takes a process group down: TERM, a grace period, then KILL.
 stop_group() {
   local pid=$1 i
   kill -TERM -- "-$pid" 2>/dev/null || true
@@ -126,7 +131,7 @@ stop_group() {
 hostcall_watch() {
   local dir=$1 demo=$2 req n line name args code pid="" sink="" abandoned i
   # A hook still running when the launcher stops is taken down with its whole process group.
-  trap '[ -z "$pid" ] || stop_group "$pid"; [ -z "$sink" ] || kill "$sink" 2>/dev/null || true; exit 0' TERM
+  trap '[ -z "$pid" ] || stop_group "$pid"; [ -z "$sink" ] || stop_group "$sink"; exit 0' TERM
   while :; do
     for req in "$dir"/req-*; do
       case "$req" in *.tmp) continue ;; esac
@@ -137,20 +142,23 @@ hostcall_watch() {
       { while IFS= read -r line || [ -n "$line" ]; do args+=("$line"); done <"$req"; } 2>/dev/null || continue
       name=${args[0]-}
       [ ${#args[@]} -eq 0 ] || unset 'args[0]'
-      mkfifo "$dir/pipe-$n"
-      { head -c 65536 >"$dir/out-$n"; cat >/dev/null; } <"$dir/pipe-$n" &
-      sink=$!
-      # Own process group (setsid, or perl where macOS has none).
-      if command -v setsid >/dev/null 2>&1; then
-        ( cd "$demo" && exec setsid bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/pipe-$n" &
-      else
-        ( cd "$demo" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/pipe-$n" &
+      rm -f "$dir/pipe-$n"
+      if ! mkfifo "$dir/pipe-$n" 2>/dev/null; then
+        { printf '1\n'; echo "visual-kit: cannot create a pipe in $dir"; } >"$dir/res-$n.tmp"
+        mv "$dir/res-$n.tmp" "$dir/res-$n"
+        rm -f "$req"
+        continue
       fi
+      # The sink copies byte by byte (dd bs=1: unbuffered, so what a hook printed is on disk the moment it is
+      # read, even if the sink is stopped later) until 64 KiB, then drains the rest.
+      ( in_group bash -c 'dd bs=1 count=65536 of="$1" 2>/dev/null; cat >/dev/null' sink "$dir/out-$n" ) <"$dir/pipe-$n" &
+      sink=$!
+      ( cd "$demo" && in_group bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/pipe-$n" &
       pid=$!
       code=0 abandoned=0
       while kill -0 "$pid" 2>/dev/null; do
         [ -f "$req" ] || { abandoned=1; break; }
-        sleep 0.05
+        sleep 0.1
       done
       if [ "$abandoned" = 1 ]; then
         stop_group "$pid"
@@ -159,10 +167,10 @@ hostcall_watch() {
         wait "$pid" || code=$?
       fi
       pid=""
-      # The sink ends when every writer has closed the FIFO; a grandchild that kept it open must not hang us.
-      for i in $(seq 40); do kill -0 "$sink" 2>/dev/null || break; sleep 0.05; done
-      kill "$sink" 2>/dev/null || true
-      wait "$sink" 2>/dev/null || true
+      # The sink ends when every writer has closed the FIFO; a process the hook left behind may hold it open, so
+      # give it a second to finish and then stop it (its output is already on disk).
+      for i in $(seq 20); do kill -0 "$sink" 2>/dev/null || break; sleep 0.05; done
+      stop_group "$sink"
       sink=""
       if [ "$abandoned" = 0 ]; then
         { printf '%s\n' "$code"; cat "$dir/out-$n" 2>/dev/null || true; } >"$dir/res-$n.tmp"

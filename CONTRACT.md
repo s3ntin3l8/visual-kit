@@ -193,7 +193,10 @@ not affected: no mount, no watcher.
   script's process group (TERM, and KILL after about two seconds for one that ignores it), writes no answer, and
   goes on with the next request. A script still running when the capture ends is stopped the same way.
 - Transport: the launcher mounts a fresh directory at `/hostcall` for `capture` (`VISUAL_KIT_HOSTCALL`), the
-  runner writes `req-<n>` (name, then one argument per line) and waits for `res-<n>` (exit code, then stdout).
+  runner writes `req-<n>` (name, then one argument per line) and waits for `res-<n>` (exit code, then stdout). The launcher
+  also keeps its own `pipe-<n>` and `out-<n>` there while a script runs (its stdout, capped at 64 KiB). A process a
+  script leaves running with its stdout open does not lose the output already printed: the launcher waits about a
+  second for the stream to close, then answers with what it has.
 
 ## What the runner does to every shot
 
