@@ -1,6 +1,6 @@
 {
   "name": "visual-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reproducible screenshots, loops and visual checks for web apps, from one pinned Docker image",
   "type": "module",
   "license": "AGPL-3.0-or-later",
