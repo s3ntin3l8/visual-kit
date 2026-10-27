@@ -111,6 +111,7 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 }
 ```
 
+- **`hostTimeoutSec`**: how long `host()` waits for `host-hooks.sh` (1–600, default 30).
 - **`cacheKeyFiles`**: a check caches its base capture by merge base, image, routes, `scenes.json`, `hooks.mjs`
   and `DEMO_NOW`. The base runs against the working tree's `baseDeps`, so a dependency change there can change
   the base's rendering without touching any of those. List the lockfiles they were built from: their content
