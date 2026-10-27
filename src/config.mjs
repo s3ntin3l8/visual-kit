@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
-import { PROFILES } from "./profiles.mjs";
+import { DEFAULT_TAGS, PROFILES } from "./profiles.mjs";
 
 const schema = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../schema/scenes.schema.json"), "utf8"));
 const validateSchema = new Ajv({ allErrors: true, strict: false }).compile(schema);
@@ -42,6 +42,10 @@ function semanticProblems(cfg) {
       else if (actions[0] === "fill" && typeof step.value !== "string") out.push(`${where}.steps[${j}]: fill needs a "value"`);
       else if (actions[0] !== "fill" && "value" in step) out.push(`${where}.steps[${j}]: "value" belongs to fill only`);
     });
+    if (scene.viewports?.length === 0) out.push(scene.stills === false ? `${where}: "viewports" is empty; drop it, a loop-only scene has no stills to limit` : `${where}: "viewports" is empty; for a scene that renders only its loop use "stills": false`);
+    if (scene.stills === false && !scene.loop) out.push(`${where}: "stills": false leaves nothing to render without a "loop"`);
+    // Only presentation profiles record loops: any other tag set leaves a loop-only scene rendering nothing, anywhere.
+    if (scene.stills === false && !(scene.tags ?? DEFAULT_TAGS).includes("presentation")) out.push(`${where}: a loop-only scene renders only in landing and readme; add the "presentation" tag`);
     for (const vp of scene.viewports ?? []) {
       if (!knownViewports.has(vp)) out.push(`${where}: unknown viewport "${vp}" (known: ${[...knownViewports].join(", ")})`);
     }

@@ -69,7 +69,7 @@ describe("e2e", () => {
     const out = path.join(work, "landing");
     const r = await capture({ cfg, profile: "landing", baseUrl: "http://127.0.0.1:4173", outDir: out, log() {} });
     assert.deepEqual(r.failures, []);
-    assert.deepEqual(readdirSync(out).filter((f) => f !== ".visual-kit").sort(), ["home-desktop.png", "home-mobile.png", "home.jpg", "home.mp4", "home.webm", "list-desktop.png", "list-mobile.png", "menu-desktop.png", "menu-mobile.png"]);
+    assert.deepEqual(readdirSync(out).filter((f) => f !== ".visual-kit").sort(), ["home-desktop.png", "home-mobile.png", "home.jpg", "home.mp4", "home.webm", "list-desktop.png", "list-mobile.png", "menu-desktop.png", "menu-mobile.png", "reel.jpg", "reel.mp4", "reel.webm"]); // reel is loop-only: no reel*.png
     assert.ok(near(size(path.join(out, "home-desktop.png")), [3200, 2000]));
     assert.ok(near(size(path.join(out, "home-mobile.png")), [1170, 2532]));
     const [w, h] = size(path.join(out, "menu-desktop.png"));

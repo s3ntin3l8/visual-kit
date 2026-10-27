@@ -95,6 +95,22 @@ test("profiles: a scene can narrow viewports and schemes", () => {
   assert.deepEqual(variants({ scenes: [scene] }, "check", scene).map((v) => v.file), ["x.desktop.dark.png"]);
 });
 
+test("profiles: a loop-only scene (stills: false) renders no stills", () => {
+  const scene = { name: "x", path: "/", tags: ["presentation"], stills: false, loop: {} };
+  assert.deepEqual(variants({ scenes: [scene] }, "landing", scene), []);
+  assert.deepEqual(variants({ scenes: [scene] }, "check", scene), []);
+});
+
+test("config: stills: false needs a loop and the presentation tag, and an empty viewports list points at it", () => {
+  const loopOnly = { name: "a", path: "/", tags: ["presentation"], stills: false, loop: {} };
+  assert.throws(() => loadConfig(config({ scenes: [{ ...loopOnly, loop: undefined }] })), /"stills": false leaves nothing to render/);
+  assert.throws(() => loadConfig(config({ scenes: [{ ...loopOnly, tags: undefined }] })), /add the "presentation" tag/); // the default tags render it nowhere
+  assert.throws(() => loadConfig(config({ scenes: [{ ...loopOnly, tags: ["check"] }] })), /add the "presentation" tag/);
+  assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", viewports: [], loop: {} }] })), /use "stills": false/);
+  assert.throws(() => loadConfig(config({ scenes: [{ ...loopOnly, viewports: [] }] })), /drop it/);
+  assert.equal(loadConfig(config({ scenes: [loopOnly] })).scenes[0].stills, false);
+});
+
 test("profiles: scenes default to check and audit, --routes narrows by name or path", () => {
   const cfg = { scenes: [{ name: "a", path: "/triage" }, { name: "b", path: "/cases/1" }, { name: "c", path: "/x", tags: ["presentation"] }] };
   assert.deepEqual(selectScenes(cfg, "check").map((s) => s.name), ["a", "b"]);
