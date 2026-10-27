@@ -109,11 +109,13 @@ eval "$HOST_ENV"
 # Host hooks: with a visual/host-hooks.sh, hooks.mjs may call host(name, ...args) during a capture. The image
 # writes req-<n> files (name, then one argument per line) into a directory mounted at /hostcall; this watcher
 # runs `bash host-hooks.sh <name> <demo-dir> <args…>` from the checkout's copy of the script and answers with
-# res-<n> (the exit code, then stdout). See CONTRACT.md.
+# res-<n> (the exit code, then stdout cut at 64 KiB). Requests are served one at a time. See CONTRACT.md.
 HOST_HOOKS=$(realpath_m "$(dirname "$CONFIG")/host-hooks.sh")
 WATCH_PID="" HOSTCALL="" DEMO_DIR="" KIT_EXTRA=()
 hostcall_watch() {
-  local dir=$1 demo=$2 req n line name args out code
+  local dir=$1 demo=$2 req n line name args code pid=""
+  # A hook still running when the launcher stops is taken down with its whole process group.
+  trap '[ -z "$pid" ] || { kill -TERM -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }; exit 0' TERM
   while :; do
     for req in "$dir"/req-*; do
       case "$req" in *.tmp) continue ;; esac
@@ -123,11 +125,20 @@ hostcall_watch() {
       while IFS= read -r line || [ -n "$line" ]; do args+=("$line"); done <"$req"
       name=${args[0]-}
       [ ${#args[@]} -eq 0 ] || unset 'args[0]'
+      # Own process group (setsid, or perl where macOS has none); stdout goes to a file so the cap below cuts
+      # the answer, never the script.
+      if command -v setsid >/dev/null 2>&1; then
+        ( cd "$demo" && exec setsid bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/out-$n" &
+      else
+        ( cd "$demo" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/out-$n" &
+      fi
+      pid=$!
       code=0
-      out=$(cd "$demo" && bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} | head -c 65536) || code=$?
-      printf '%s\n%s' "$code" "$out" >"$dir/res-$n.tmp"
+      wait "$pid" || code=$?
+      pid=""
+      { printf '%s\n' "$code"; head -c 65536 "$dir/out-$n"; } >"$dir/res-$n.tmp"
       mv "$dir/res-$n.tmp" "$dir/res-$n"
-      rm -f "$req"
+      rm -f "$req" "$dir/out-$n"
     done
     sleep 0.1
   done

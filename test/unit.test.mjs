@@ -295,7 +295,7 @@ test("hostcall: no answer within the timeout fails and withdraws the request", a
 
 test("hostcall: without a channel, a bad name or a multi-line argument it refuses before writing anything", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vk-host-"));
-  await assert.rejects(createHost({ dir: "" })("x"), /no visual\/host-hooks\.sh/);
+  await assert.rejects(createHost({ dir: "" })("x"), /no host-hook channel/);
   await assert.rejects(createHost({ dir })("Bad Name"), /lowercase letters/);
   await assert.rejects(createHost({ dir })("ok", "a\nb"), /line break/);
   assert.deepEqual(readdirSync(dir), []);

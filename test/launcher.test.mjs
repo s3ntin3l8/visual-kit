@@ -1,7 +1,7 @@
 // The host launcher's guards, against a stub `docker`: no container, no browser, so it runs on any host (macOS CI too).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -175,6 +175,8 @@ describe("launcher host hooks", { timeout: 60_000 }, () => {
   echo) shift 2; printf '%s|' "$@" ;;
   where) echo "$PWD $2" ;;
   fail) echo "boom"; exit 3 ;;
+  big) head -c 70000 /dev/zero | tr '\\0' x; : >"$2/finished" ;;
+  hang) echo $$ >"$2/hook.pid"; exec sleep 30 ;;
 esac
 `;
 
@@ -184,9 +186,26 @@ esac
     assert.equal(answer(r), "0\na b|3|");
     assert.match(dockerCalls(r), /-v \S+:\/hostcall .*-e VISUAL_KIT_HOSTCALL=\/hostcall/);
     run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "where\n" } });
-    assert.equal(answer(r), `0\n${r.dir} ${r.dir}\n`.trimEnd(), "run from, and told, the demo's directory (the checkout for a landing run)");
+    assert.equal(answer(r), `0\n${r.dir} ${r.dir}\n`, "run from, and told, the demo's directory (the checkout for a landing run)");
     run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "fail\n" } });
-    assert.equal(answer(r), "3\nboom\n".trimEnd());
+    assert.equal(answer(r), "3\nboom\n");
+  });
+
+  test("stdout is cut at 64 KiB without interrupting the script", () => {
+    const r = withHooks("hook-big", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "big\n" } });
+    const [code, body] = [answer(r).slice(0, 2), answer(r).slice(2)];
+    assert.equal(code, "0\n");
+    assert.equal(body.length, 65536);
+    assert.ok(existsSync(path.join(r.dir, "finished")), "the script ran to the end");
+  });
+
+  test("a hook still running when the launcher ends is stopped", () => {
+    const r = withHooks("hook-hang", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "hang\n", STUB_HOSTCALL_WAIT: "15" } });
+    const pid = Number(readFileSync(path.join(r.dir, "hook.pid"), "utf8"));
+    assert.ok(pid > 1);
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "the hook and its sleep are gone");
   });
 
   test("a repo without the script gets no mount and no channel", () => {

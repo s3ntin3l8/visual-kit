@@ -12,7 +12,7 @@ case " $* " in
       dir=$(printf '%s\n' "$@" | sed -n 's#^\(.*\):/hostcall$#\1#p')
       if [ -n "$dir" ]; then
         printf '%b' "$STUB_HOSTCALL" >"$dir/req-t.tmp" && mv "$dir/req-t.tmp" "$dir/req-t"
-        for _ in $(seq 100); do [ -f "$dir/res-t" ] && break; sleep 0.1; done
+        for _ in $(seq "${STUB_HOSTCALL_WAIT:-100}"); do [ -f "$dir/res-t" ] && break; sleep 0.1; done
         cp "$dir/res-t" "$STUB_LOG.res" 2>/dev/null
       fi
     fi ;;

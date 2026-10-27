@@ -171,7 +171,7 @@ describe("e2e", () => {
       assert.ok(existsSync(path.join(demoDir, "flag")), "the host script ran in the demo's directory");
       delete process.env.VISUAL_KIT_HOSTCALL;
       const none = await run("hosted-nochannel");
-      assert.ok(none.failures.some((f) => /no visual\/host-hooks\.sh/.test(f)), none.failures.join("; "));
+      assert.ok(none.failures.some((f) => /no host-hook channel/.test(f)), none.failures.join("; "));
     } finally {
       delete process.env.VISUAL_KIT_HOSTCALL;
       clearInterval(watcher);

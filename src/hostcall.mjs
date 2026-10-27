@@ -7,12 +7,13 @@ const POLL_MS = 50;
 /**
  * The runner's end of the host-hook channel: a request file in a directory the launcher mounts, answered by
  * the launcher's watcher running the repo's `visual/host-hooks.sh` on the host (CONTRACT.md, "Host hooks").
- * Without a channel (`dir` unset) every call throws: the repo has no host hooks.
+ * Without a channel (`dir` unset) every call throws. The launcher serves requests one at a time, so concurrent
+ * `host()` calls queue and all of them count against their own timeout.
  */
 export function createHost({ dir = process.env.VISUAL_KIT_HOSTCALL, timeoutSec = 30 } = {}) {
   let counter = 0;
   return async function host(name, ...args) {
-    if (!dir) throw new Error(`host("${name}"): this repo has no visual/host-hooks.sh (the launcher mounts the channel only when it exists)`);
+    if (!dir) throw new Error(`host("${name}"): no host-hook channel: the repo needs a visual/host-hooks.sh and the capture must run through the launcher (visual/.kit/run.sh), which is what mounts it`);
     if (!NAME.test(name)) throw new Error(`host("${name}"): a hook name is lowercase letters, digits, dots, dashes and underscores`);
     const lines = args.map(String);
     if (lines.some((a) => /[\r\n]/.test(a))) throw new Error(`host("${name}"): arguments cannot contain a line break`);
