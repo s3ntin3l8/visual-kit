@@ -70,6 +70,7 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
  * baselines only overlay the base, they do not define it.
  */
 export function compare({ baseDir, headDir, outDir, baselinesDir, threshold = 0.1, maxDiffPixels = 20 }) {
+  if (baselinesDir && !existsSync(baselinesDir)) throw new Error(`baselines folder ${baselinesDir} does not exist`);
   guardReplace(outDir);
   rmSync(outDir, { recursive: true, force: true });
   for (const sub of ["base", "head", "diff"]) mkdirSync(path.join(outDir, sub), { recursive: true });

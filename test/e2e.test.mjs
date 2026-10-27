@@ -74,6 +74,12 @@ describe("e2e", () => {
     assert.equal(byFile["settings.desktop.dark.png"].baseline, undefined, "unflagged scenes behave as before");
     assert.ok(s.entries.filter((e) => e.file.startsWith("home.")).every((e) => e.result === "same" && e.baseline), "every home shot matches its baseline");
     assert.equal(byFile["menu.desktop.dark.png"].result, "changed", "an unflagged scene is still compared with the merge base");
+    // A failing flagged scene must not replace the committed set with a partial one.
+    const before = readdirSync(baselines).sort();
+    const broken = { ...cfg, scenes: cfg.scenes.map((x) => (x.name === "home" ? { ...x, steps: [{ click: "#does-not-exist" }] } : x)) };
+    const failed = await capture({ cfg: broken, profile: "check", baseUrl: "http://127.0.0.1:4174", outDir: baselines, onlyBaseline: true, log() {} });
+    assert.ok(failed.failures.length > 0);
+    assert.deepEqual(readdirSync(baselines).sort(), before, "the committed set is untouched");
     await assert.rejects(capture({ cfg: { ...cfg, scenes: cfg.scenes.map((x) => ({ ...x, baseline: undefined })) }, profile: "check", baseUrl: "http://127.0.0.1:4174", outDir: path.join(work, "none"), onlyBaseline: true, log() {} }), /flagged "baseline": true/);
   });
 

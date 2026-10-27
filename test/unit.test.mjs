@@ -334,6 +334,12 @@ test("compare: a committed baseline stands in for the base, with its own metrics
   assert.equal(without.entries.find((e) => e.file === "flagged.png").result, "changed");
 });
 
+test("compare: a baselines folder that does not exist is an error, not an empty overlay", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-baseline-missing-"));
+  for (const side of ["base", "head"]) mkdirSync(path.join(dir, side));
+  assert.throws(() => compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), baselinesDir: path.join(dir, "nope"), outDir: path.join(dir, "r") }), /does not exist/);
+});
+
 test("compare: a changed shot against its baseline says so in the report", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vk-baseline-md-"));
   for (const side of ["base", "head", "baselines"]) mkdirSync(path.join(dir, side));
@@ -349,4 +355,5 @@ test("compare: a changed shot against its baseline says so in the report", () =>
 test("config: a baseline scene needs the check tag", () => {
   assert.equal(loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true }] })).scenes[0].baseline, true);
   assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true, tags: ["presentation"] }] })), /add the "check" tag/);
+  assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", baseline: true, tags: ["check", "presentation"], stills: false, loop: {} }] })), /needs stills/);
 });

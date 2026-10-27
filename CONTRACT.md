@@ -61,7 +61,6 @@ visual-baseline: visual/.kit/run.sh ## Only for repos with "baseline": true scen
 | `make screenshots-landing OUT=dir` | scenes tagged `presentation`, landing profile | `dir/` | by personal-landing |
 | `make screenshots-audit AUDIT=YYYY-MM-<scope>-<topic>` | scenes tagged `audit`, every form factor | `docs/audit/assets/<slug>/` | no |
 | `make visual-check [ROUTES=a,b] [BASE=ref]` | scenes tagged `check`, base vs working tree | `visual/.out/check/` | no |
-
 | `make visual-baseline` | scenes with `"baseline": true`, check profile | `visual/baselines/` (replaced wholesale, never narrowed by `ROUTES`) | yes |
 
 `ROUTES` is a comma-separated list of scene names or paths. A path matches itself and everything below it
@@ -156,7 +155,7 @@ instead, and GitHub's image diff does the reviewing:
   baseline, compares the working tree against that file (and its metrics) instead. The report marks those
   entries `baseline`. A flagged scene without a baseline yet behaves like any other. A baseline whose scene was
   not rendered in this run (a narrower `ROUTES`, a removed scene) is ignored, never reported as removed; run
-  `make visual-baseline` to drop it.
+  `make visual-baseline` to drop it. A failed `visual-baseline` leaves the committed set untouched.
 - Baselines are only valid from the pinned image (its browser and fonts), and a bump of the image or of a
   viewport size changes them: regenerate and commit them in that PR.
 - Unflagged scenes, and repos without `visual/baselines/`, behave exactly as before. `--fail-on-diff` stays

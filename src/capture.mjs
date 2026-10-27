@@ -229,7 +229,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   // A check compares whatever rendered (a scene the base lacks fails there and shows as "new"), so its
   // partial output is useful. Everything else is a deliverable: a partial set must never replace a
   // complete one, so on any failure the previous output stays untouched.
-  const publishPartial = profileName === "check";
+  const publishPartial = profileName === "check" && !onlyBaseline; // baselines are a deliverable, not a throwaway report
   // Nothing rendered is a failure of its own (every scene filtered out, a typo): never publish it over a
   // complete set.
   if (!files.length && !failures.length) failures.push(`nothing was rendered for the ${profileName} profile (check the scenes' viewports, schemes and tags)`);
