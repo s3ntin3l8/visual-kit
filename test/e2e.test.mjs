@@ -1,7 +1,7 @@
 // Needs Chromium and ffmpeg: run it in the image (see README) or where `npx playwright install chromium` ran.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -19,8 +19,8 @@ const size = (file) => {
   return [p.width, p.height];
 };
 
-function serve(port, accent) {
-  const child = spawn("node", ["fixtures/serve.mjs"], { env: { ...process.env, FIXTURE_PORT: String(port), ...(accent ? { FIXTURE_ACCENT: accent } : {}) }, stdio: ["ignore", "pipe", "inherit"] });
+function serve(port, accent, extraEnv = {}) {
+  const child = spawn("node", ["fixtures/serve.mjs"], { env: { ...process.env, FIXTURE_PORT: String(port), ...(accent ? { FIXTURE_ACCENT: accent } : {}), ...extraEnv }, stdio: ["ignore", "pipe", "inherit"] });
   return new Promise((resolve, reject) => {
     child.stdout.on("data", (c) => /DEMO_READY/.test(String(c)) && resolve(child));
     child.once("exit", (code) => reject(new Error(`fixture exited ${code}`)));
@@ -147,6 +147,36 @@ describe("e2e", () => {
     assert.deepEqual(m["wide.phone.dark.png"].offscreenSample, ["select#clipped", "select#clipped-in-row"]);
     assert.deepEqual(m["wide.phone.dark.png"].unnamedSample, ["select#unnamed"], "option text does not name a select");
     assert.equal(m["wide.desktop.dark.png"].offscreen, 0, "it fits on a desktop");
+  });
+
+  test("host hook: a scene settles on what the host script did, and without the channel it fails clearly", async () => {
+    const demoDir = mkdtempSync(path.join(work, "demo-"));
+    const channel = mkdtempSync(path.join(work, "hostcall-"));
+    const hosted = await serve(4175, undefined, { FIXTURE_FLAG: path.join(demoDir, "flag") });
+    // The launcher's watcher, in JS: run the fixture's host-hooks.sh for each request and answer it.
+    const watcher = setInterval(() => {
+      for (const f of readdirSync(channel).filter((n) => n.startsWith("req-") && !n.endsWith(".tmp"))) {
+        const [name, ...args] = readFileSync(path.join(channel, f), "utf8").split("\n").slice(0, -1);
+        const r = spawnSync("bash", ["fixtures/visual/host-hooks.sh", name, demoDir, ...args], { encoding: "utf8" });
+        writeFileSync(path.join(channel, f.replace("req-", "res-")), `${r.status}\n${r.stdout}`);
+        rmSync(path.join(channel, f));
+      }
+    }, 20);
+    const run = (outName) => capture({ cfg, profile: "audit", baseUrl: "http://127.0.0.1:4175", outDir: path.join(work, outName), routes: ["hosted"], hooksFile: "fixtures/visual/hooks.mjs", log() {} });
+    try {
+      process.env.VISUAL_KIT_HOSTCALL = channel;
+      const ok = await run("hosted");
+      assert.deepEqual(ok.failures, []);
+      assert.deepEqual(ok.files, ["hosted.desktop.dark.png"]);
+      assert.ok(existsSync(path.join(demoDir, "flag")), "the host script ran in the demo's directory");
+      delete process.env.VISUAL_KIT_HOSTCALL;
+      const none = await run("hosted-nochannel");
+      assert.ok(none.failures.some((f) => /no visual\/host-hooks\.sh/.test(f)), none.failures.join("; "));
+    } finally {
+      delete process.env.VISUAL_KIT_HOSTCALL;
+      clearInterval(watcher);
+      hosted.kill();
+    }
   });
 
   test("a failing scene is reported and the others still render", async () => {

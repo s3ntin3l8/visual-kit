@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:f
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { createHost } from "./hostcall.mjs";
 import { PROFILES, selectScenes, variants } from "./profiles.mjs";
 import { padRect } from "./clip.mjs";
 import { pageMetrics } from "./metrics.mjs";
@@ -160,7 +161,13 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
   const scenes = selectScenes(cfg, profileName, routes);
   if (!scenes.length) throw new Error(`no scene matches profile "${profileName}"${routes.length ? ` and --routes ${routes.join(",")}` : ""}`);
 
-  const hooks = await loadHooks(hooksFile);
+  const loaded = await loadHooks(hooksFile);
+  // Both hooks get `host(name, ...args)`: the repo's host-side script, see hostcall.mjs.
+  const host = createHost({ timeoutSec: cfg.hostTimeoutSec });
+  const hooks = loaded && {
+    beforeScene: loaded.beforeScene && ((a) => loaded.beforeScene({ ...a, host })),
+    settle: loaded.settle && ((a) => loaded.settle({ ...a, host })),
+  };
   // Stage then swap, so a failed run never leaves a half-written output folder.
   const stage = `${outDir}.staging`;
   rmSync(stage, { recursive: true, force: true });

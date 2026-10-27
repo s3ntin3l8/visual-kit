@@ -134,6 +134,19 @@
           "wait": 400
         }
       ]
+    },
+    {
+      "name": "hosted",
+      "path": "/hosted.html",
+      "tags": [
+        "audit"
+      ],
+      "viewports": [
+        "desktop"
+      ],
+      "schemes": [
+        "dark"
+      ]
     }
   ]
 }
