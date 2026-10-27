@@ -165,6 +165,16 @@ test("capture: sceneUrl stays on a loopback demo", () => {
   assert.throws(() => sceneUrl("https://example.com", "/"), /not a loopback/);
 });
 
+test("capture: without host networking the launcher's host alias replaces the loopback host", () => {
+  process.env.VISUAL_KIT_HOST_ALIAS = "host.docker.internal";
+  try {
+    assert.equal(sceneUrl("http://127.0.0.1:3985", "/triage?x=1"), "http://host.docker.internal:3985/triage?x=1");
+    assert.throws(() => sceneUrl("https://example.com", "/"), /not a loopback/);
+  } finally {
+    delete process.env.VISUAL_KIT_HOST_ALIAS;
+  }
+});
+
 test("config: a scene path that would leave the demo is refused by the schema", () => {
   assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "//evil.com/x" }] })), /path/);
 });

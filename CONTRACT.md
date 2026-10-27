@@ -3,8 +3,16 @@
 This is the one place the spec lives. Every repo that uses visual-kit, and
 [personal-landing](https://github.com/s3ntin3l8/personal-landing) which pulls from them, relies on it.
 
-**Host requirements:** bash, git, docker and GNU coreutils (`realpath -m`, `sha256sum`); `flock` is optional but
-recommended (it keeps two checks from colliding). Linux; macOS needs coreutils and `--network host` support.
+**Host requirements:** bash (3.2 is enough), git and docker; `flock` is optional but recommended (it keeps two
+checks from colliding). Linux and macOS: the launcher needs no GNU coreutils (it falls back to `shasum -a 256`,
+a built-in `realpath -m` and a perl process group when `setsid` is missing).
+
+**Reaching the demo.** On Linux the container shares the host network (`--network host`), so the demo's loopback
+URL works as is. Where that does not exist (Docker Desktop on macOS) the launcher runs the container on the
+default network with `--add-host host.docker.internal:host-gateway`, and the runner swaps the demo URL's loopback
+host for `host.docker.internal` (`VISUAL_KIT_HOST_ALIAS`, set by the launcher). The demo must then be reachable
+from Docker's VM, which Docker Desktop provides for services bound to the host's loopback. Choose with
+`VISUAL_KIT_HOST_NETWORK=host|bridge`; the default is `host` on Linux, `bridge` elsewhere.
 
 ## What a repo provides
 

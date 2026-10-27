@@ -7,7 +7,7 @@ Reproducible screenshots, loops and visual checks for web apps from one pinned D
 * `src/` runner (capture, compare, loop, metrics, profiles, config); `bin/visual-kit.mjs` is the CLI inside the image
 * `host/run.sh` the launcher that runs on the host (boots the demo, calls the image); extracted into consuming repos with `visual-kit host-files`, never copied by hand
 * `schema/scenes.schema.json` validates a repo's `visual/scenes.json`
-* `fixtures/` a small static site the tests render; `test/unit.test.mjs` (fast), `test/e2e.test.mjs` (Chromium, ffmpeg: run in the image)
+* `fixtures/` a small static site the tests render; `test/unit.test.mjs` (fast), `test/launcher.test.mjs` (host/run.sh against a stub docker; also runs on macOS CI), `test/e2e.test.mjs` (Chromium, ffmpeg: run in the image)
 
 ## Rules
 
