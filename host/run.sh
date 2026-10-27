@@ -98,7 +98,7 @@ kit() {
   # Docker Desktop (macOS, Windows) has no usable host networking: reach the demo through host.docker.internal.
   if [ "$NETWORK" = bridge ]; then net=(--add-host host.docker.internal:host-gateway -e VISUAL_KIT_HOST_ALIAS=host.docker.internal); fi
   [ -n "$out_dir" ] && mounts+=(-v "$out_dir:/out")
-  docker run --rm --ipc=host "${net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -e "VISUAL_KIT_FORCE=$FORCE" "${mounts[@]}" -w /work "$IMAGE" "$@"
+  docker run --rm --ipc=host "${net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -e "VISUAL_KIT_FORCE=$FORCE" "${mounts[@]}" ${KIT_EXTRA[@]+"${KIT_EXTRA[@]}"} -w /work "$IMAGE" "$@"
 }
 
 # DEMO_START DEMO_URL DEMO_READY DEMO_TIMEOUT BASE_DEPS CACHE_KEY_FILES (+ the demo's exported env).
@@ -106,9 +106,53 @@ kit() {
 HOST_ENV=$(kit "" env --config "$CONFIG") || die "cannot read $CONFIG"
 eval "$HOST_ENV"
 
+# Host hooks: with a visual/host-hooks.sh, hooks.mjs may call host(name, ...args) during a capture. The image
+# writes req-<n> files (name, then one argument per line) into a directory mounted at /hostcall; this watcher
+# runs `bash host-hooks.sh <name> <demo-dir> <args…>` from the checkout's copy of the script and answers with
+# res-<n> (the exit code, then stdout cut at 64 KiB). Requests are served one at a time. See CONTRACT.md.
+HOST_HOOKS=$(realpath_m "$(dirname "$CONFIG")/host-hooks.sh")
+WATCH_PID="" HOSTCALL="" DEMO_DIR="" KIT_EXTRA=()
+hostcall_watch() {
+  local dir=$1 demo=$2 req n line name args code pid=""
+  # A hook still running when the launcher stops is taken down with its whole process group.
+  trap '[ -z "$pid" ] || { kill -TERM -- "-$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }; exit 0' TERM
+  while :; do
+    for req in "$dir"/req-*; do
+      case "$req" in *.tmp) continue ;; esac
+      [ -f "$req" ] || continue
+      n=${req##*/req-}
+      args=()
+      while IFS= read -r line || [ -n "$line" ]; do args+=("$line"); done <"$req"
+      name=${args[0]-}
+      [ ${#args[@]} -eq 0 ] || unset 'args[0]'
+      # Own process group (setsid, or perl where macOS has none); stdout goes to a file so the cap below cuts
+      # the answer, never the script.
+      if command -v setsid >/dev/null 2>&1; then
+        ( cd "$demo" && exec setsid bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/out-$n" &
+      else
+        ( cd "$demo" && exec perl -e 'setpgrp(0, 0); exec @ARGV' bash "$HOST_HOOKS" "$name" "$demo" ${args[@]+"${args[@]}"} ) >"$dir/out-$n" &
+      fi
+      pid=$!
+      code=0
+      wait "$pid" || code=$?
+      pid=""
+      { printf '%s\n' "$code"; head -c 65536 "$dir/out-$n"; } >"$dir/res-$n.tmp"
+      mv "$dir/res-$n.tmp" "$dir/res-$n"
+      rm -f "$req" "$dir/out-$n"
+    done
+    sleep 0.1
+  done
+}
+stop_hostcall() {
+  [ -z "$WATCH_PID" ] || { kill "$WATCH_PID" 2>/dev/null || true; wait "$WATCH_PID" 2>/dev/null || true; }
+  [ -z "$HOSTCALL" ] || rm -rf "$HOSTCALL"
+  WATCH_PID="" HOSTCALL=""
+}
+
 DEMO_PID="" DEMO_LOG=$(mktemp)
 start_demo() {
   local dir=$1
+  DEMO_DIR=$dir
   : >"$DEMO_LOG"
   # Own process group, so stop_demo can take the demo's children down with it (macOS has no setsid).
   command -v setsid >/dev/null 2>&1 || command -v perl >/dev/null 2>&1 || die "neither setsid nor perl found; one of them is needed to start the demo in its own process group"
@@ -135,6 +179,7 @@ stop_demo() {
 }
 WORKTREE=""
 cleanup() {
+  stop_hostcall
   stop_demo
   [ -z "$WORKTREE" ] || git worktree remove --force "$WORKTREE" 2>/dev/null || true
   rm -f "$DEMO_LOG"
@@ -144,9 +189,19 @@ trap 'exit 130' INT TERM
 
 # capture <profile> <dir>: run the image against the demo that is up, writing into <dir>.
 capture() {
-  local profile=$1 dir=$2
+  local profile=$1 dir=$2 rc=0
   mkdir -p "$(dirname "$dir")"
-  kit "$(dirname "$dir")" capture "$profile" --config "$CONFIG" --url "$DEMO_URL" --out "/out/$(basename "$dir")" ${ROUTES:+--routes "$ROUTES"}
+  KIT_EXTRA=()
+  if [ -f "$HOST_HOOKS" ]; then
+    HOSTCALL=$(mktemp -d)
+    KIT_EXTRA=(-v "$HOSTCALL:/hostcall" -e VISUAL_KIT_HOSTCALL=/hostcall)
+    hostcall_watch "$HOSTCALL" "$DEMO_DIR" &
+    WATCH_PID=$!
+  fi
+  kit "$(dirname "$dir")" capture "$profile" --config "$CONFIG" --url "$DEMO_URL" --out "/out/$(basename "$dir")" ${ROUTES:+--routes "$ROUTES"} || rc=$?
+  stop_hostcall
+  KIT_EXTRA=()
+  return "$rc"
 }
 
 case "$MODE" in
@@ -176,7 +231,7 @@ case "$MODE" in
       KEY_FILES="$KEY_FILES$f=$h "
     done
     set +f
-    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "${DEMO_NOW:-}" "$KEY_FILES" | sha256 | cut -c1-16)
+    KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "$([ -f "$HOST_HOOKS" ] && git hash-object "$HOST_HOOKS")" "${DEMO_NOW:-}" "$KEY_FILES" | sha256 | cut -c1-16)
     CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")-$(printf '%s' "$ROOT" | sha256 | cut -c1-8)"
     CACHE="$CACHE_ROOT/$KEY"
     mkdir -p "$CACHE_ROOT"

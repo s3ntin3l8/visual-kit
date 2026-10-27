@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -9,6 +9,7 @@ import { padRect } from "../src/clip.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { lastChangeSeconds, loopEnd } from "../src/freeze.mjs";
 import { sceneUrl } from "../src/capture.mjs";
+import { createHost } from "../src/hostcall.mjs";
 import { PROFILES, selectScenes, variants } from "../src/profiles.mjs";
 
 function config(extra = {}) {
@@ -256,4 +257,51 @@ test("compare: controls past the viewport edge are called out when they increase
   // and the other way round: a fix is reported too
   const fixed = compare({ baseDir: path.join(dir, "head"), headDir: path.join(dir, "base"), outDir: path.join(dir, "r2") });
   assert.ok(fixed.entries[0].health.some((h) => /controls past the viewport edge fixed: 2 → 0 \(was select#proceeding, button\.save\)/.test(h)));
+});
+
+/** Plays the launcher's watcher: answers the next request in `dir` with `answer(requestLines)` -> [code, stdout]. */
+function answerOnce(dir, answer) {
+  const timer = setInterval(() => {
+    const req = readdirSync(dir).find((f) => f.startsWith("req-") && !f.endsWith(".tmp"));
+    if (!req) return;
+    clearInterval(timer);
+    const [code, out] = answer(readFileSync(path.join(dir, req), "utf8").split("\n").slice(0, -1));
+    writeFileSync(path.join(dir, req.replace("req-", "res-")), `${code}\n${out}`);
+    rmSync(path.join(dir, req));
+  }, 10);
+  return () => clearInterval(timer);
+}
+
+test("hostcall: a request carries the name and one argument per line, the answer is the stdout", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-host-"));
+  let seen;
+  answerOnce(dir, (lines) => ((seen = lines), [0, "done\nlines"]));
+  assert.equal(await createHost({ dir })("release", "a b", 3), "done\nlines");
+  assert.deepEqual(seen, ["release", "a b", "3"]);
+  assert.deepEqual(readdirSync(dir), [], "request and response are cleaned up");
+});
+
+test("hostcall: a non-zero exit fails with the code and the output", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-host-"));
+  answerOnce(dir, () => [3, "boom"]);
+  await assert.rejects(createHost({ dir })("fail"), /failed \(exit 3\): boom/);
+});
+
+test("hostcall: no answer within the timeout fails and withdraws the request", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-host-"));
+  await assert.rejects(createHost({ dir, timeoutSec: 0.2 })("slow"), /no answer from the launcher within 0\.2s/);
+  assert.deepEqual(readdirSync(dir), []);
+});
+
+test("hostcall: without a channel, a bad name or a multi-line argument it refuses before writing anything", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-host-"));
+  await assert.rejects(createHost({ dir: "" })("x"), /no host-hook channel/);
+  await assert.rejects(createHost({ dir })("Bad Name"), /lowercase letters/);
+  await assert.rejects(createHost({ dir })("ok", "a\nb"), /line break/);
+  assert.deepEqual(readdirSync(dir), []);
+});
+
+test("config: hostTimeoutSec is a bounded integer", () => {
+  assert.equal(loadConfig(config({ hostTimeoutSec: 60 })).hostTimeoutSec, 60);
+  assert.throws(() => loadConfig(config({ hostTimeoutSec: 0 })), /hostTimeoutSec/);
 });

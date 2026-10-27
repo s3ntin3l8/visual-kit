@@ -1,7 +1,7 @@
 // The host launcher's guards, against a stub `docker`: no container, no browser, so it runs on any host (macOS CI too).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -9,14 +9,7 @@ import { describe, test } from "node:test";
 const RUN = path.resolve("host/run.sh");
 const tmp = realpathSync(mkdtempSync(path.join(tmpdir(), "vk-launcher-")));
 
-// The stub answers `env` with a demo that is only an echo and a sleep, and logs every call, one line each.
-const STUB = `#!/bin/bash
-echo "$*" >>"$STUB_LOG"
-case " $* " in
-  *" env --config "*) printf "DEMO_START='echo DEMO_READY; exec sleep 60'\\nDEMO_URL='http://127.0.0.1:1'\\nDEMO_READY='DEMO_READY'\\nDEMO_TIMEOUT='5'\\nBASE_DEPS=''\\nCACHE_KEY_FILES='%s'\\n" "$STUB_KEY_FILES" ;;
-  "image inspect"*) echo sha256:stubimage ;;
-esac
-`;
+const STUB = readFileSync(path.resolve("test/stub-docker.sh"), "utf8");
 
 function repo(name) {
   const dir = path.join(tmp, name);
@@ -46,6 +39,8 @@ function run(r, args, { env = {}, shims = {} } = {}) {
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
+
+const dockerCalls = (r) => log(r).split("\n").filter((l) => l.startsWith("run ") && l.includes(" capture ")).join("\n");
 
 const log = (r) => {
   try {
@@ -166,6 +161,71 @@ describe("launcher cache key errors", { timeout: 60_000 }, () => {
     const res = run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache"), STUB_KEY_FILES: "lock.txt" } });
     assert.notEqual(res.status, 0);
     assert.match(res.out, /cannot hash lock\.txt/);
+  });
+});
+
+describe("launcher host hooks", { timeout: 60_000 }, () => {
+  const withHooks = (name, script) => {
+    const r = repo(name);
+    writeFileSync(path.join(r.dir, "visual/host-hooks.sh"), script);
+    return r;
+  };
+  const answer = (r) => readFileSync(`${r.log}.res`, "utf8");
+  const SCRIPT = `case "$1" in
+  echo) shift 2; printf '%s|' "$@" ;;
+  where) echo "$PWD $2" ;;
+  fail) echo "boom"; exit 3 ;;
+  big) head -c 70000 /dev/zero | tr '\\0' x; : >"$2/finished" ;;
+  hang) echo $$ >"$2/hook.pid"; exec sleep 30 ;;
+esac
+`;
+
+  test("a request is answered by visual/host-hooks.sh: name, demo dir, arguments, stdout, exit code", () => {
+    const r = withHooks("hook-ok", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "echo\na b\n3\n" } });
+    assert.equal(answer(r), "0\na b|3|");
+    assert.match(dockerCalls(r), /-v \S+:\/hostcall .*-e VISUAL_KIT_HOSTCALL=\/hostcall/);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "where\n" } });
+    assert.equal(answer(r), `0\n${r.dir} ${r.dir}\n`, "run from, and told, the demo's directory (the checkout for a landing run)");
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "fail\n" } });
+    assert.equal(answer(r), "3\nboom\n");
+  });
+
+  test("stdout is cut at 64 KiB without interrupting the script", () => {
+    const r = withHooks("hook-big", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "big\n" } });
+    const [code, body] = [answer(r).slice(0, 2), answer(r).slice(2)];
+    assert.equal(code, "0\n");
+    assert.equal(body, "x".repeat(65536));
+    assert.ok(existsSync(path.join(r.dir, "finished")), "the script ran to the end");
+  });
+
+  test("a hook still running when the launcher ends is stopped", () => {
+    const r = withHooks("hook-hang", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "hang\n", STUB_HOSTCALL_WAIT: "15" } });
+    const pid = Number(readFileSync(path.join(r.dir, "hook.pid"), "utf8"));
+    assert.ok(pid > 1);
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "the hook and its sleep are gone");
+  });
+
+  test("a repo without the script gets no mount and no channel", () => {
+    const r = repo("hook-none");
+    run(r, ["landing", "--out", "out"]);
+    assert.doesNotMatch(dockerCalls(r), /hostcall/);
+  });
+
+  test("the script's content is part of the base's cache key", () => {
+    const r = withHooks("hook-key", SCRIPT);
+    const env = { XDG_CACHE_HOME: path.join(r.dir, "cache") };
+    const cacheFor = () => {
+      writeFileSync(r.log, "");
+      run(r, ["check", "--base", "main"], { env });
+      return log(r).match(/-v (\S+\/cache\/visual-kit\/\S+):\/out/)?.[1];
+    };
+    const first = cacheFor();
+    assert.ok(first, log(r));
+    writeFileSync(path.join(r.dir, "visual/host-hooks.sh"), `${SCRIPT}# changed\n`);
+    assert.notEqual(cacheFor(), first);
   });
 });
 

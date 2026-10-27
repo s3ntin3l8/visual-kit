@@ -1,7 +1,7 @@
 // A tiny static "demo" for visual-kit's own tests: serves fixtures/site and prints DEMO_READY.
 // FIXTURE_ACCENT recolours the accent, which is the known change the self-test looks for.
 import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,7 +10,11 @@ const accent = process.env.FIXTURE_ACCENT ?? "#1a73e8";
 const port = Number(process.env.FIXTURE_PORT ?? 4173);
 const types = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript" };
 
+// FIXTURE_FLAG: a file the host-hook scene creates; /flag answers 200 once it exists.
+const flag = process.env.FIXTURE_FLAG;
+
 createServer((req, res) => {
+  if (req.url === "/flag") return void res.writeHead(flag && existsSync(flag) ? 200 : 404).end();
   const name = new URL(req.url, "http://x").pathname.replace(/^\/$/, "/index.html");
   try {
     const file = path.join(site, path.normalize(name));

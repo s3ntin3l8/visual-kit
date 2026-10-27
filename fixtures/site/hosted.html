@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Hosted</title>
+<link rel="stylesheet" href="/style.css">
+<header><h1>Hosted</h1><a href="/">Home</a></header>
+<main>
+  <div class="card"><strong>State</strong><br><small id="state">waiting for the host</small></div>
+</main>
+<script>
+  // Becomes "released" once the demo's host-side flag file exists (see fixtures/visual/host-hooks.sh).
+  const poll = setInterval(async () => {
+    if ((await fetch("/flag")).ok) {
+      const el = document.getElementById("state");
+      el.textContent = "released by the host";
+      el.classList.add("released");
+      clearInterval(poll);
+    }
+  }, 1000);
+</script>
+</html>

@@ -24,7 +24,7 @@ the launcher warns.
    prints a line matching `readyOutput` (default `DEMO_READY`) once it is ready. It never touches live data,
    binds only to loopback, and tears itself down on `SIGTERM`.
 2. **`visual/Dockerfile`** with one line: `FROM ghcr.io/s3ntin3l8/visual-kit:<version>`. Dependabot bumps it.
-3. **`visual/scenes.json`** (see below), and optionally **`visual/hooks.mjs`**.
+3. **`visual/scenes.json`** (see below), and optionally **`visual/hooks.mjs`** and **`visual/host-hooks.sh`**.
 4. **Four make targets**, thin wrappers around `visual/.kit/run.sh`, which is extracted from the image
    and never committed.
 5. **`.gitignore`** entries: `visual/.kit/`, `visual/.out/`, `docs/audit/assets/`, `*.staging`.
@@ -111,8 +111,9 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 }
 ```
 
-- **`cacheKeyFiles`**: a check caches its base capture by merge base, image, routes, `scenes.json`, `hooks.mjs`
-  and `DEMO_NOW`. The base runs against the working tree's `baseDeps`, so a dependency change there can change
+- **`hostTimeoutSec`**: how long `host()` waits for `host-hooks.sh` (1–600, default 30).
+- **`cacheKeyFiles`**: a check caches its base capture by merge base, image, routes, `scenes.json`, `hooks.mjs`,
+  `host-hooks.sh` and `DEMO_NOW`. The base runs against the working tree's `baseDeps`, so a dependency change there can change
   the base's rendering without touching any of those. List the lockfiles they were built from: their content
   (as the working tree has it) joins the key, so editing one makes the next check recapture the base, and an
   unrelated edit does not. Repo-relative paths with no spaces, glob characters or leading `-`. A listed path that
@@ -133,7 +134,29 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 - **`emphasis`** dims everything but a `spotlight` element (an overlay over its box, so popovers and other
   positioned elements stay where they are), or injects `css`.
 - **`hooks.mjs`** may export `beforeScene({context, page, scene, variant, cfg})` (log in, dismiss a banner) and
-  `settle({page, scene})` (app-specific readiness, e.g. wait for charts). Throw to fail the scene.
+  `settle({page, scene})` (app-specific readiness, e.g. wait for charts). Throw to fail the scene. Both also
+  receive `host(name, ...args)`, see **Host hooks**.
+
+### Host hooks
+
+`hooks.mjs` runs inside the image and reaches the demo only over HTTP. A demo that needs something done on the
+host while a scene is captured (mullion's terminal loop needs a release file written into the demo's scratch
+folder once the terminal has settled) ships an optional **`visual/host-hooks.sh`**. Repos without the file are
+not affected: no mount, no watcher.
+
+- From `hooks.mjs`: `await host("release", "arg1", "arg2")` returns the script's stdout (≤ 64 KiB) and throws if
+  the script exits non-zero or does not answer within `hostTimeoutSec` (default 30). The name is lowercase
+  letters, digits, `.`, `-`, `_`; arguments are single-line strings. Without a channel (no script, or the image run
+  without the launcher) `host()` throws. Stdout comes back verbatim (trailing newlines included, so trim it) and is cut at 64 KiB; the script is not interrupted.
+- The launcher runs `bash visual/host-hooks.sh <name> <demo-dir> <args…>` on the host, with `<demo-dir>` as its
+  working directory: the directory the running demo was started in (the base worktree during the base capture
+  of a check, the checkout otherwise). It always runs the checkout's copy of the script, and calls come one at a
+  time. The script's stderr goes to the launcher's stderr.
+- The script is repo code run with the user's rights, like `make demo`; its content is part of the check's
+  cache key.
+- A hook still running when the capture ends is stopped with its process group (a request the runner gave up on keeps running until then).
+- Transport: the launcher mounts a fresh directory at `/hostcall` for `capture` (`VISUAL_KIT_HOSTCALL`), the
+  runner writes `req-<n>` (name, then one argument per line) and waits for `res-<n>` (exit code, then stdout).
 
 ## What the runner does to every shot
 

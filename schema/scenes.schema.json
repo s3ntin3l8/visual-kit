@@ -29,6 +29,7 @@
       "items": { "type": "string", "pattern": "^(?![/-])(?!.*(^|/)\\.\\.(/|$))[^\\s*?\\[\\]]+$" },
       "description": "Files of the repo (lockfiles, e.g. requirements.txt) whose content is part of the base capture's cache key: the base runs against the working tree's baseDeps, so a change to what they were built from must not reuse an old base. A path that is not a regular file counts as absent."
     },
+    "hostTimeoutSec": { "type": "integer", "minimum": 1, "maximum": 600, "default": 30, "description": "How long a hooks.mjs call to host(name, ...) waits for visual/host-hooks.sh to answer." },
     "clock": { "type": "string", "description": "Fixed browser time (Date.now / new Date). Pair it with the demo's own DEMO_NOW." },
     "locale": { "type": "string" },
     "storageState": { "type": "string", "description": "Path (relative to the repo) of a logged-in Playwright storage state." },
