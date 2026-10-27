@@ -147,14 +147,14 @@ not affected: no mount, no watcher.
 - From `hooks.mjs`: `await host("release", "arg1", "arg2")` returns the script's stdout (≤ 64 KiB) and throws if
   the script exits non-zero or does not answer within `hostTimeoutSec` (default 30). The name is lowercase
   letters, digits, `.`, `-`, `_`; arguments are single-line strings. Without a channel (no script, or the image run
-  without the launcher) `host()` throws. Longer stdout is cut at 64 KiB; the script is not interrupted.
+  without the launcher) `host()` throws. Stdout comes back verbatim (trailing newlines included, so trim it) and is cut at 64 KiB; the script is not interrupted.
 - The launcher runs `bash visual/host-hooks.sh <name> <demo-dir> <args…>` on the host, with `<demo-dir>` as its
   working directory: the directory the running demo was started in (the base worktree during the base capture
   of a check, the checkout otherwise). It always runs the checkout's copy of the script, and calls come one at a
   time. The script's stderr goes to the launcher's stderr.
 - The script is repo code run with the user's rights, like `make demo`; its content is part of the check's
   cache key.
-- A hook still running when the capture ends or times out is stopped with its process group.
+- A hook still running when the capture ends is stopped with its process group (a request the runner gave up on keeps running until then).
 - Transport: the launcher mounts a fresh directory at `/hostcall` for `capture` (`VISUAL_KIT_HOSTCALL`), the
   runner writes `req-<n>` (name, then one argument per line) and waits for `res-<n>` (exit code, then stdout).
 

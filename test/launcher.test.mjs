@@ -196,7 +196,7 @@ esac
     run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "big\n" } });
     const [code, body] = [answer(r).slice(0, 2), answer(r).slice(2)];
     assert.equal(code, "0\n");
-    assert.equal(body.length, 65536);
+    assert.equal(body, "x".repeat(65536));
     assert.ok(existsSync(path.join(r.dir, "finished")), "the script ran to the end");
   });
 
