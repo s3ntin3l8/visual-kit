@@ -177,6 +177,9 @@ describe("launcher host hooks", { timeout: 60_000 }, () => {
   fail) echo "boom"; exit 3 ;;
   big) head -c 70000 /dev/zero | tr '\\0' x; : >"$2/finished" ;;
   hang) echo $$ >"$2/hook.pid"; exec sleep 30 ;;
+  huge) head -c 41943040 /dev/zero | tr '\\0' x; du -sk "$TMPDIR" >"$2/du"; : >"$2/finished" ;;
+  linger) printf 'partial'; ( exec sleep 5 ) & ;;
+  stubborn) trap '' TERM; echo $$ >"$2/hook.pid"; while :; do sleep 1; done ;;
 esac
 `;
 
@@ -202,10 +205,43 @@ esac
 
   test("a hook still running when the launcher ends is stopped", () => {
     const r = withHooks("hook-hang", SCRIPT);
-    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "hang\n", STUB_HOSTCALL_WAIT: "15" } });
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "hang\n", STUB_HOSTCALL_WAIT: "15", STUB_KEEP_REQUEST: "1" } });
     const pid = Number(readFileSync(path.join(r.dir, "hook.pid"), "utf8"));
     assert.ok(pid > 1);
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "the hook and its sleep are gone");
+  });
+
+  test("output past 64 KiB is never stored, and the hook still runs to the end", () => {
+    const r = withHooks("hook-huge", SCRIPT);
+    const tmpdirForRun = path.join(r.dir, "tmp");
+    mkdirSync(tmpdirForRun);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "huge\n", TMPDIR: tmpdirForRun } });
+    assert.equal(answer(r), `0\n${"x".repeat(65536)}`);
+    assert.ok(existsSync(path.join(r.dir, "finished")), "the hook wrote all 40 MB and ran to the end");
+    const usedKiB = Number(readFileSync(path.join(r.dir, "du"), "utf8").split(/\s/)[0]);
+    assert.ok(usedKiB < 1024, `the temp dir held ${usedKiB} KiB right after the hook wrote 40 MB`);
+  });
+
+  // The runner withdraws req-<n> when hostTimeoutSec passes; the stub does the same, then keeps the capture alive.
+  test("a request the runner gave up on is stopped while the capture is still running", () => {
+    const r = withHooks("hook-abandoned", SCRIPT);
+    const res = run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "hang\n", STUB_HOSTCALL_WAIT: "10", STUB_LINGER: "4", STUB_PIDFILE: path.join(r.dir, "hook.pid") } });
+    assert.equal(readFileSync(`${r.log}.alive`, "utf8").trim(), "gone", "stopped within the linger, not at the end of the capture");
+    assert.match(res.out, /host hook 'hang' stopped: the capture gave up on it/);
+    assert.equal(existsSync(`${r.log}.res`), false, "nobody reads an answer to an abandoned request");
+  });
+
+  test("output is kept when the hook leaves a process holding its stdout, and the next request is still served", () => {
+    const r = withHooks("hook-linger", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "linger\n", STUB_HOSTCALL2: "echo\nx\n" } });
+    assert.equal(answer(r), "0\npartial");
+    assert.equal(readFileSync(`${r.log}.res2`, "utf8"), "0\nx|");
+  });
+
+  test("an abandoned hook that ignores TERM is killed after the grace period", () => {
+    const r = withHooks("hook-stubborn", SCRIPT);
+    run(r, ["landing", "--out", "out"], { env: { STUB_HOSTCALL: "stubborn\n", STUB_HOSTCALL_WAIT: "10", STUB_LINGER: "6", STUB_PIDFILE: path.join(r.dir, "hook.pid") } });
+    assert.equal(readFileSync(`${r.log}.alive`, "utf8").trim(), "gone");
   });
 
   test("a repo without the script gets no mount and no channel", () => {
