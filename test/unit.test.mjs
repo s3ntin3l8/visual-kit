@@ -107,6 +107,14 @@ test("profiles: a scene can narrow viewports and schemes", () => {
   assert.deepEqual(variants({ scenes: [scene] }, "check", scene).map((v) => v.file), ["x.desktop.dark.png"]);
 });
 
+test("profiles: a scene's motion reaches its variants and defaults to reduce", () => {
+  const plain = { name: "x", path: "/" };
+  const normal = { ...plain, motion: "normal" };
+  assert.ok(variants({ scenes: [plain] }, "check", plain).every((v) => v.motion === "reduce"));
+  assert.ok(variants({ scenes: [normal] }, "check", normal).every((v) => v.motion === "normal"));
+  assert.throws(() => loadConfig(config({ scenes: [{ ...plain, motion: "fast" }] })));
+});
+
 test("profiles: a loop-only scene (stills: false) renders no stills", () => {
   const scene = { name: "x", path: "/", tags: ["presentation"], stills: false, loop: {} };
   assert.deepEqual(variants({ scenes: [scene] }, "landing", scene), []);
