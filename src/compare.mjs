@@ -3,7 +3,11 @@ import path from "node:path";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { MARKER, guardReplace } from "./output.mjs";
+import { variants } from "./profiles.mjs";
 import * as provenance from "./provenance.mjs";
+
+export const DEFAULT_THRESHOLD = 0.1;
+export const DEFAULT_MAX_DIFF_PIXELS = 20;
 
 const pngs = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".png")).sort() : []);
 const readMetrics = (dir) => (existsSync(path.join(dir, "metrics.json")) ? JSON.parse(readFileSync(path.join(dir, "metrics.json"), "utf8")) : {});
@@ -17,7 +21,7 @@ function pad(png, width, height) {
 }
 
 /** Compares two shots; returns the diff pixel count and, when different, the diff image. */
-export function diffPngs(baseBuf, headBuf, { threshold = 0.1 } = {}) {
+export function diffPngs(baseBuf, headBuf, { threshold = DEFAULT_THRESHOLD } = {}) {
   const base = PNG.sync.read(baseBuf);
   const head = PNG.sync.read(headBuf);
   const width = Math.max(base.width, head.width);
@@ -87,8 +91,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
  *
  * With baselines, `summary.baselines` says whether they are stale (see provenance.mjs); that is a notice in the
  * report, never a verdict. `cfg` (the repo's scenes.json) lets the viewport table take part in that comparison.
+ *
+ * Tolerance, most specific first: the `threshold` / `maxDiffPixels` arguments (the CLI flags), the shot's scene in `cfg`,
+ * the top level of `cfg`, the defaults. An entry whose tolerance is not the default says which one applied.
  */
-export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold = 0.1, maxDiffPixels = 20 }) {
+export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold, maxDiffPixels }) {
   if (baselinesDir && !existsSync(baselinesDir)) throw new Error(`baselines folder ${baselinesDir} does not exist`);
   guardReplace(outDir);
   rmSync(outDir, { recursive: true, force: true });
@@ -102,6 +109,15 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold
   const baseMetrics = { ...readMetrics(baseDir), ...Object.fromEntries(Object.entries(baselineMetrics).filter(([f]) => baselineFiles.has(f))) };
   const headMetrics = readMetrics(headDir);
   const entries = [];
+  const sceneOf = new Map();
+  for (const scene of cfg?.scenes ?? []) for (const v of variants(cfg, "check", scene)) sceneOf.set(v.file, scene);
+  const toleranceOf = (file) => {
+    const scene = sceneOf.get(file);
+    return {
+      maxDiffPixels: maxDiffPixels ?? scene?.maxDiffPixels ?? cfg?.maxDiffPixels ?? DEFAULT_MAX_DIFF_PIXELS,
+      threshold: threshold ?? scene?.threshold ?? cfg?.threshold ?? DEFAULT_THRESHOLD,
+    };
+  };
 
   for (const file of headFiles) {
     copyFileSync(path.join(headDir, file), path.join(outDir, "head", file));
@@ -116,10 +132,12 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold
       continue;
     }
     copyFileSync(path.join(fileBaseDir, file), path.join(outDir, "base", file));
-    const d = diffPngs(readFileSync(path.join(fileBaseDir, file)), readFileSync(path.join(headDir, file)), { threshold });
-    const changed = d.pixels > maxDiffPixels || d.resized;
+    const tol = toleranceOf(file);
+    const d = diffPngs(readFileSync(path.join(fileBaseDir, file)), readFileSync(path.join(headDir, file)), { threshold: tol.threshold });
+    const changed = d.pixels > tol.maxDiffPixels || d.resized;
+    const custom = tol.maxDiffPixels !== DEFAULT_MAX_DIFF_PIXELS || tol.threshold !== DEFAULT_THRESHOLD;
     if (d.diff && changed) writeFileSync(path.join(outDir, "diff", file), d.diff);
-    entries.push({ file, result: changed ? "changed" : "same", pixels: d.pixels, resized: d.resized, size: d.size, health, gate, ...(baseline ? { baseline: true } : {}) });
+    entries.push({ file, result: changed ? "changed" : "same", pixels: d.pixels, resized: d.resized, size: d.size, health, gate, ...(baseline ? { baseline: true } : {}), ...(custom ? { tolerance: tol } : {}) });
   }
   for (const file of baseFiles) {
     if (headFiles.includes(file)) continue;
@@ -147,6 +165,11 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold
 
 const cellText = (t) => String(t).replace(/\s+/g, " ").replaceAll("|", "\\|");
 
+/** "tolerance: 60 px, threshold 0.2", naming only what differs from the default. */
+function toleranceText(t) {
+  return `tolerance: ${[t.maxDiffPixels !== DEFAULT_MAX_DIFF_PIXELS ? `${t.maxDiffPixels} px` : "", t.threshold !== DEFAULT_THRESHOLD ? `threshold ${t.threshold}` : ""].filter(Boolean).join(", ")}`;
+}
+
 function markdown(s) {
   const lines = ["## Visual check", ""];
   lines.push(`${s.total} shots compared: **${s.changed} changed**, ${s.new} new, ${s.removed} removed, ${s.same} identical.`, "");
@@ -158,7 +181,7 @@ function markdown(s) {
   if (!interesting.length) return `${lines.join("\n")}Nothing changed.\n`;
   lines.push("| Shot | Result | Detail |", "| --- | --- | --- |");
   for (const e of interesting) {
-    const detail = [e.baseline ? "against the committed baseline" : "", e.result === "changed" ? (e.resized ? `size ${e.size.base.join("×")} → ${e.size.head.join("×")}` : `${e.pixels} px differ`) : "", ...e.health].filter(Boolean).map(cellText).join("<br>");
+    const detail = [e.baseline ? "against the committed baseline" : "", e.result === "changed" ? (e.resized ? `size ${e.size.base.join("×")} → ${e.size.head.join("×")}` : `${e.pixels} px differ`) : "", e.tolerance ? toleranceText(e.tolerance) : "", ...e.health].filter(Boolean).map(cellText).join("<br>");
     lines.push(`| \`${e.file}\` | ${e.result} | ${detail} |`);
   }
   return `${lines.join("\n")}\n`;
@@ -169,7 +192,7 @@ function html(s) {
   const rows = s.entries
     .filter((e) => e.result !== "same" || e.health.length)
     .map(
-      (e) => `<section><h2>${esc(e.file)} <small>${e.result}${e.result === "changed" ? ` · ${e.pixels} px` : ""}${e.baseline ? " · baseline" : ""}</small></h2>
+      (e) => `<section><h2>${esc(e.file)} <small>${e.result}${e.result === "changed" ? ` · ${e.pixels} px` : ""}${e.baseline ? " · baseline" : ""}${e.tolerance ? ` · ${esc(toleranceText(e.tolerance))}` : ""}</small></h2>
 ${e.health.length ? `<ul>${e.health.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
 <div class="row"><figure><figcaption>base</figcaption>${cell("base", e.file, e.result !== "new")}</figure>
 <figure><figcaption>head</figcaption>${cell("head", e.file, e.result !== "removed")}</figure>

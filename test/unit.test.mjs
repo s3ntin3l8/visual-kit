@@ -463,3 +463,44 @@ test("compare: the health verdict counts new console errors and serious axe node
   assert.equal(run(axe("serious", 2), m(), "r7").health.ok, true, "a fixed rule never trips it");
   assert.equal(run(m({ console: ["old"] }), m({ console: ["old"] }), "r8").health.ok, true);
 });
+
+test("compare: maxDiffPixels / threshold come from the scene, then the top level, then the default; flags win", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-tol-"));
+  for (const side of ["base", "head"]) mkdirSync(path.join(dir, side));
+  const cfg = { demo: { start: "x", url: "http://127.0.0.1:1" }, maxDiffPixels: 30, scenes: [{ name: "loose", path: "/", viewports: ["desktop"], schemes: ["light"], maxDiffPixels: 60 }, { name: "top", path: "/", viewports: ["desktop"], schemes: ["light"] }] };
+  const files = Object.fromEntries(cfg.scenes.map((s) => [s.name, variants(cfg, "check", s)[0].file]));
+  // A 10×10 shot whose first `n` pixels differ clearly.
+  const shot = (n) => {
+    const p = png(10, 10, [0, 0, 0, 255]);
+    for (let i = 0; i < n; i++) p.data.set([255, 255, 255, 255], i * 4);
+    return PNG.sync.write(p);
+  };
+  const put = (side, file, n) => writeFileSync(path.join(dir, side, file), shot(n));
+  const run = (extra = {}) => compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "r"), cfg, ...extra });
+  const result = (s, name) => s.entries.find((e) => e.file === files[name]);
+  for (const name of ["loose", "top"]) put("base", files[name], 0);
+  put("head", files.loose, 40);
+  put("head", files.top, 40);
+  let s = run();
+  assert.equal(result(s, "loose").result, "same", "40 px is within the scene's 60");
+  assert.deepEqual(result(s, "loose").tolerance, { maxDiffPixels: 60, threshold: 0.1 });
+  assert.equal(result(s, "top").result, "changed", "40 px is over the top level's 30");
+  put("head", files.loose, 70);
+  s = run();
+  assert.equal(result(s, "loose").result, "changed");
+  assert.match(readFileSync(path.join(dir, "r", "summary.md"), "utf8"), /tolerance: 60 px/);
+  assert.equal(run({ maxDiffPixels: 100 }).changed, 0, "the flag wins over both");
+  // No keys, no cfg: the default of 20 and no tolerance note.
+  const plain = compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, "r2") });
+  assert.equal(plain.changed, 2);
+  assert.equal(plain.entries[0].tolerance, undefined);
+});
+
+test("validate: maxDiffPixels must be a non-negative integer, threshold a number from 0 to 1", () => {
+  const ok = loadConfig(config({ maxDiffPixels: 0, threshold: 0.3, scenes: [{ name: "a", path: "/", maxDiffPixels: 60, threshold: 1 }] }));
+  assert.equal(ok.scenes[0].maxDiffPixels, 60);
+  for (const bad of [{ maxDiffPixels: -1 }, { maxDiffPixels: 1.5 }, { maxDiffPixels: "20" }, { threshold: 2 }, { threshold: -0.1 }]) {
+    assert.throws(() => loadConfig(config(bad)), /maxDiffPixels|threshold/, JSON.stringify(bad));
+    assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", ...bad }] })), /maxDiffPixels|threshold/, JSON.stringify(bad));
+  }
+});

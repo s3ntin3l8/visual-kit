@@ -14,7 +14,7 @@ import { PROFILES } from "../src/profiles.mjs";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `usage:
   visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b] [--baseline-only]
-  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR [--config FILE]] [--max-diff-pixels N] [--fail-on-diff] [--fail-on-health]
+  visual-kit compare --base DIR --head DIR --out DIR [--config FILE] [--baselines DIR] [--max-diff-pixels N] [--threshold T] [--fail-on-diff] [--fail-on-health]
   visual-kit env --config FILE      shell assignments for the host launcher
   visual-kit host-files             tar of host/ on stdout (the launcher the Makefile extracts)
   visual-kit validate --config FILE
@@ -29,7 +29,8 @@ const options = {
   head: { type: "string" },
   baselines: { type: "string" },
   "baseline-only": { type: "boolean", default: false },
-  "max-diff-pixels": { type: "string", default: "20" },
+  "max-diff-pixels": { type: "string" },
+  threshold: { type: "string" },
   "fail-on-diff": { type: "boolean", default: false },
   "fail-on-health": { type: "boolean", default: false },
 };
@@ -67,9 +68,18 @@ async function main() {
     }
     case "compare": {
       if (!values.base || !values.head || !values.out) throw new Error("compare needs --base, --head and --out");
-      const maxDiffPixels = Number(values["max-diff-pixels"]);
-      if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
-      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.baselines && values.config ? loadConfig(values.config) : undefined, maxDiffPixels });
+      // Flags win over scenes.json; without them compare() resolves each shot's scene, then the top level, then the default.
+      let maxDiffPixels;
+      if (values["max-diff-pixels"] !== undefined) {
+        maxDiffPixels = Number(values["max-diff-pixels"]);
+        if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
+      }
+      let threshold;
+      if (values.threshold !== undefined) {
+        threshold = Number(values.threshold);
+        if (values.threshold.trim() === "" || !(threshold >= 0 && threshold <= 1)) throw new Error(`--threshold must be a number from 0 to 1, got "${values.threshold}"`);
+      }
+      const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.config ? loadConfig(values.config) : undefined, maxDiffPixels, threshold });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
       if (values["fail-on-diff"] && (s.changed || s.removed)) return 2;
       if (values["fail-on-health"] && !s.health.ok) {

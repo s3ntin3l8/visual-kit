@@ -326,11 +326,12 @@ case "$MODE" in
     if [ -d "$CACHE/shots" ]; then cp -R "$CACHE/shots" "$OUT/base"; else mkdir -p "$OUT/base"; fi
     # Committed baselines (visual/baselines) stand in for the merge base on the scenes that have one; the config
     # lets the report tell whether they were rendered with today's viewport table.
+    # The config also carries the pixel tolerance (maxDiffPixels, threshold), which compare resolves per scene.
     BASELINES="$(dirname "$CONFIG")/baselines" BASELINE_ARGS=()
-    if [ -d "$BASELINES" ]; then BASELINE_ARGS=(--baselines "/work/$BASELINES" --config "$CONFIG"); fi
+    if [ -d "$BASELINES" ]; then BASELINE_ARGS=(--baselines "/work/$BASELINES"); fi
     # HEALTH_GATE=1 (any non-empty value but 0) adds --fail-on-health: a new console error or serious/critical axe node exits 3.
     [ "${HEALTH_GATE:-0}" = 0 ] || BASELINE_ARGS+=(--fail-on-health)
-    COMPARE_RC=0; kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"} || COMPARE_RC=$?
+    COMPARE_RC=0; kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"} --config "$CONFIG" || COMPARE_RC=$?
     echo "visual-kit: report at ${OUT#"$ROOT"/}/report/index.html (summary: ${OUT#"$ROOT"/}/report/summary.md)"
     # The report exists even when a scene failed on the working tree, but the failure is not forgotten.
     [ "$HEAD_RC" = 0 ] || die "some scenes failed to render on the working tree (see above)"
