@@ -285,6 +285,16 @@ describe("launcher baselines", { timeout: 60_000 }, () => {
     assert.match(run(r, ["baseline"]).out, /not written by visual-kit/);
   });
 
+  test("HEALTH_GATE=1 adds --fail-on-health to the compare call, and only then", () => {
+    const r = repo("health-gate");
+    const compareCall = () => log(r).split("\n").find((l) => l.includes(" compare ")) ?? "";
+    run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache") } });
+    assert.doesNotMatch(compareCall(), /--fail-on-health/);
+    writeFileSync(r.log, "");
+    run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache"), HEALTH_GATE: "1" } });
+    assert.match(compareCall(), /--fail-on-health/);
+  });
+
   test("a check compares against visual/baselines only when it exists", () => {
     const r = repo("baseline-check");
     const compareCall = () => log(r).split("\n").find((l) => l.includes(" compare ")) ?? "";

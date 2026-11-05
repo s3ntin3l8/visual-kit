@@ -427,3 +427,31 @@ test("compare CLI: a --config that does not exist is an error, not a silent skip
   assert.match(missing.stderr, /nope\.json/);
   assert.equal(spawnSync("node", args, { encoding: "utf8" }).status, 0, "without --config the check simply skips the viewport table");
 });
+
+test("compare: the health verdict counts new console errors and serious axe nodes, never pixels or fixes", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-gate-"));
+  const m = (over) => ({ status: 200, axe: [], console: [], overflow: false, unnamed: 0, ...over });
+  const shot = (side, color) => writeFileSync(path.join(dir, side, "a.png"), PNG.sync.write(png(10, 10, color)));
+  const run = (base, head, name) => {
+    writeFileSync(path.join(dir, "base", "metrics.json"), JSON.stringify({ "a.png": base }));
+    writeFileSync(path.join(dir, "head", "metrics.json"), JSON.stringify({ "a.png": head }));
+    return compare({ baseDir: path.join(dir, "base"), headDir: path.join(dir, "head"), outDir: path.join(dir, name) });
+  };
+  for (const side of ["base", "head"]) mkdirSync(path.join(dir, side));
+  shot("base", [1, 1, 1, 255]);
+  shot("head", [250, 250, 250, 255]);
+  const pixelsOnly = run(m(), m(), "r1");
+  assert.equal(pixelsOnly.changed, 1);
+  assert.deepEqual(pixelsOnly.health, { ok: true, console: 0, axe: 0, entries: [] });
+  const consoleErr = run(m(), m({ console: ["403 forbidden"] }), "r2");
+  assert.equal(consoleErr.health.ok, false);
+  assert.equal(consoleErr.health.console, 1);
+  assert.match(readFileSync(path.join(dir, "r2", "summary.md"), "utf8"), /Health gate: 1 shot/);
+  const axe = (impact, nodes) => m({ axe: [{ id: "color-contrast", impact, nodes }] });
+  assert.equal(run(axe("serious", 1), axe("serious", 3), "r3").health.axe, 1);
+  assert.equal(run(m(), axe("critical", 1), "r4").health.axe, 1);
+  assert.equal(run(m(), axe("moderate", 5), "r5").health.ok, true, "moderate is not gated");
+  assert.equal(run(axe("serious", 2), axe("serious", 2), "r6").health.ok, true, "unchanged is not new");
+  assert.equal(run(axe("serious", 2), m(), "r7").health.ok, true, "a fixed rule never trips it");
+  assert.equal(run(m({ console: ["old"] }), m({ console: ["old"] }), "r8").health.ok, true);
+});
