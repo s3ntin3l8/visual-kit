@@ -72,7 +72,7 @@ async function main() {
       let maxDiffPixels;
       if (values["max-diff-pixels"] !== undefined) {
         maxDiffPixels = Number(values["max-diff-pixels"]);
-        if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
+        if (values["max-diff-pixels"].trim() === "" || !Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
       }
       let threshold;
       if (values.threshold !== undefined) {
