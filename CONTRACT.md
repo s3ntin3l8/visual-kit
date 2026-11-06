@@ -103,6 +103,7 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
   "cacheKeyFiles": ["requirements.txt", "frontend/package-lock.json"], // what baseDeps were built from
   "clock": "2026-10-01T09:00:00Z",                  // fixed browser time; pair with DEMO_NOW
   "mask": [".timestamp"],                           // painted over in every shot
+  "maxDiffPixels": 20, "threshold": 0.1,            // pixel tolerance of a check (these are the defaults)
   "scenes": [
     { "name": "triage-filters", "path": "/triage", "tags": ["check", "presentation"],
       "steps": [{ "click": "[aria-label='Filter by proceeding']" }],
@@ -116,6 +117,13 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
 ```
 
 - **`baseline`** (default `false`): commit this scene's check shots, see **Committed baselines**.
+- **`maxDiffPixels`** (integer ≥ 0, default 20) and **`threshold`** (0–1, default 0.1): the pixel tolerance of
+  `compare`: a shot is `changed` when more than `maxDiffPixels` pixels differ, where a pixel differs when its colour
+  distance exceeds `threshold`. Set at the top level for every scene, overridden per scene (a known jitter such as a
+  badge count). `--max-diff-pixels` / `--threshold` on `compare` win over both. The launcher passes `--config`, so
+  repos without the keys behave as before. A shot whose tolerance is not the default says so in `summary.md`,
+  `index.html` and `summary.json` (`tolerance`). A resized shot is always `changed`. `validate` rejects negative or
+  non-integer `maxDiffPixels` and a `threshold` outside 0–1.
 - **`hostTimeoutSec`**: how long `host()` waits for `host-hooks.sh` (1–600, default 30).
 - **`cacheKeyFiles`**: a check caches its base capture by merge base, image, routes, `scenes.json`, `hooks.mjs`,
   `host-hooks.sh` and `DEMO_NOW`. The base runs against the working tree's `baseDeps`, so a dependency change there can change

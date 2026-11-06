@@ -300,6 +300,7 @@ describe("launcher baselines", { timeout: 60_000 }, () => {
     const compareCall = () => log(r).split("\n").find((l) => l.includes(" compare ")) ?? "";
     run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache") } });
     assert.doesNotMatch(compareCall(), /--baselines/);
+    assert.match(compareCall(), /--config visual\/scenes\.json/, "the config carries the pixel tolerance");
     mkdirSync(path.join(r.dir, "visual/baselines"));
     writeFileSync(r.log, "");
     run(r, ["check", "--base", "main"], { env: { XDG_CACHE_HOME: path.join(r.dir, "cache") } });
