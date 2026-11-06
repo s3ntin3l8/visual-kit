@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/s3ntin3l8/visual-kit/compare/visual-kit-v0.2.0...visual-kit-v0.3.0) (2026-11-06)
+
+
+### Features
+
+* --fail-on-health, a verdict for new console errors and serious axe nodes ([06a3861](https://github.com/s3ntin3l8/visual-kit/commit/06a3861869bcccd7b5b0c01b9352069b9854bb13))
+* configurable pixel tolerance (maxDiffPixels, threshold) in scenes.json ([240fac1](https://github.com/s3ntin3l8/visual-kit/commit/240fac14e604306a5421f42a44eda4ee83220c31))
+* motion option so a scene can render with normal (not reduced) motion ([52e7aa6](https://github.com/s3ntin3l8/visual-kit/commit/52e7aa605a1fece53ea81b4a350ea69f96116268))
+
 ## [0.2.0](https://github.com/s3ntin3l8/visual-kit/compare/visual-kit-v0.1.0...visual-kit-v0.2.0) (2026-10-27)
 
 
