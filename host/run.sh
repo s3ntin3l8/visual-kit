@@ -328,9 +328,15 @@ case "$MODE" in
     # lets the report tell whether they were rendered with today's viewport table.
     BASELINES="$(dirname "$CONFIG")/baselines" BASELINE_ARGS=()
     if [ -d "$BASELINES" ]; then BASELINE_ARGS=(--baselines "/work/$BASELINES" --config "$CONFIG"); fi
-    kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"}
+    # HEALTH_GATE=1 (any non-empty value but 0) adds --fail-on-health: a new console error or serious/critical axe node exits 3.
+    [ "${HEALTH_GATE:-0}" = 0 ] || BASELINE_ARGS+=(--fail-on-health)
+    COMPARE_RC=0; kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"} || COMPARE_RC=$?
     echo "visual-kit: report at ${OUT#"$ROOT"/}/report/index.html (summary: ${OUT#"$ROOT"/}/report/summary.md)"
     # The report exists even when a scene failed on the working tree, but the failure is not forgotten.
     [ "$HEAD_RC" = 0 ] || die "some scenes failed to render on the working tree (see above)"
+    if [ "$COMPARE_RC" != 0 ]; then
+      echo "visual-kit: the report's verdict failed the check (exit $COMPARE_RC; see summary.md)" >&2
+      exit "$COMPARE_RC"
+    fi
     ;;
 esac

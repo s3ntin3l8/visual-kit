@@ -175,6 +175,21 @@ instead, and GitHub's image diff does the reviewing:
 - Unflagged scenes, and repos without `visual/baselines/`, behave exactly as before. `--fail-on-diff` stays
   opt-in.
 
+### Health gate
+
+`metricDelta` findings are listed in the report, but only `compare --fail-on-diff` (pixels, removed shots; exit 2)
+changes an exit code by default. `compare --fail-on-health` adds a second, independent gate that exits **3**:
+
+- It trips when any compared shot (against a committed baseline or the merge base, and a `new` shot against
+  nothing) has a console error the base did not have, or an axe rule of impact `serious` or `critical` with more
+  nodes than before. Pixel differences, fixed axe rules, minor/moderate axe rules and the other findings never trip it.
+- When both flags are given and both fail, the exit code is 2.
+- `summary.json` always carries `health`: `{ ok, console, axe, entries: [{ file, findings }] }`; `summary.md` and
+  `index.html` say so when it is not ok.
+- `make visual-check HEALTH_GATE=1` (or `HEALTH_GATE=1 make visual-check`) makes the launcher pass the flag and exit
+  with `compare`'s code, after writing the report. Unset or `0` leaves the check as before. Whether either gate is required is the
+  consumer's decision.
+
 ### Host hooks
 
 `hooks.mjs` runs inside the image and reaches the demo only over HTTP. A demo that needs something done on the

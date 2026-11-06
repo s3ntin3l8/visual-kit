@@ -14,7 +14,7 @@ import { PROFILES } from "../src/profiles.mjs";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `usage:
   visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b] [--baseline-only]
-  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR [--config FILE]] [--max-diff-pixels N] [--fail-on-diff]
+  visual-kit compare --base DIR --head DIR --out DIR [--baselines DIR [--config FILE]] [--max-diff-pixels N] [--fail-on-diff] [--fail-on-health]
   visual-kit env --config FILE      shell assignments for the host launcher
   visual-kit host-files             tar of host/ on stdout (the launcher the Makefile extracts)
   visual-kit validate --config FILE
@@ -31,6 +31,7 @@ const options = {
   "baseline-only": { type: "boolean", default: false },
   "max-diff-pixels": { type: "string", default: "20" },
   "fail-on-diff": { type: "boolean", default: false },
+  "fail-on-health": { type: "boolean", default: false },
 };
 
 async function main() {
@@ -70,7 +71,12 @@ async function main() {
       if (!Number.isInteger(maxDiffPixels) || maxDiffPixels < 0) throw new Error(`--max-diff-pixels must be a non-negative integer, got "${values["max-diff-pixels"]}"`);
       const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.baselines && values.config ? loadConfig(values.config) : undefined, maxDiffPixels });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
-      return values["fail-on-diff"] && (s.changed || s.removed) ? 2 : 0;
+      if (values["fail-on-diff"] && (s.changed || s.removed)) return 2;
+      if (values["fail-on-health"] && !s.health.ok) {
+        console.error(`visual-kit: health gate: ${s.health.entries.length} shot(s) with new findings (${s.health.console} console, ${s.health.axe} axe)`);
+        return 3;
+      }
+      return 0;
     }
     default:
       console.error(USAGE);

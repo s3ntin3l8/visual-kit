@@ -60,6 +60,21 @@ function metricDelta(base = {}, head = {}) {
   return out;
 }
 
+/**
+ * What `--fail-on-health` counts: a console error the base did not have, or an axe rule of impact serious or
+ * critical with more nodes than before (so a fixed rule never counts). Pixels and the other findings do not.
+ */
+function gateFindings(base = {}, head = {}) {
+  const out = [];
+  const before = new Map((base.axe ?? []).map((v) => [v.id, v.nodes]));
+  for (const v of head.axe ?? []) {
+    if ((v.impact === "serious" || v.impact === "critical") && v.nodes > (before.get(v.id) ?? 0)) out.push({ kind: "axe", text: `axe \`${v.id}\` (${v.impact}): ${before.get(v.id) ?? 0} → ${v.nodes} nodes` });
+  }
+  const seen = new Set(base.console ?? []);
+  for (const line of head.console ?? []) if (!seen.has(line)) out.push({ kind: "console", text: `new console error: ${line.slice(0, 160)}` });
+  return out;
+}
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 /**
@@ -94,21 +109,22 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold
     const fileBaseDir = baseline ? baselinesDir : baseDir;
     const missingInBase = (!baseline && !baseFiles.includes(file)) || (baseMetrics[file]?.status >= 400 && !(headMetrics[file]?.status >= 400));
     const health = metricDelta(missingInBase ? {} : baseMetrics[file], headMetrics[file]);
+    const gate = gateFindings(missingInBase ? {} : baseMetrics[file], headMetrics[file]);
     if (missingInBase) {
       // A new route is where a check matters most: its findings are the whole story, not a delta.
-      entries.push({ file, result: "new", pixels: 0, health });
+      entries.push({ file, result: "new", pixels: 0, health, gate });
       continue;
     }
     copyFileSync(path.join(fileBaseDir, file), path.join(outDir, "base", file));
     const d = diffPngs(readFileSync(path.join(fileBaseDir, file)), readFileSync(path.join(headDir, file)), { threshold });
     const changed = d.pixels > maxDiffPixels || d.resized;
     if (d.diff && changed) writeFileSync(path.join(outDir, "diff", file), d.diff);
-    entries.push({ file, result: changed ? "changed" : "same", pixels: d.pixels, resized: d.resized, size: d.size, health, ...(baseline ? { baseline: true } : {}) });
+    entries.push({ file, result: changed ? "changed" : "same", pixels: d.pixels, resized: d.resized, size: d.size, health, gate, ...(baseline ? { baseline: true } : {}) });
   }
   for (const file of baseFiles) {
     if (headFiles.includes(file)) continue;
     copyFileSync(path.join(baseDir, file), path.join(outDir, "base", file));
-    entries.push({ file, result: "removed", pixels: 0, health: [] });
+    entries.push({ file, result: "removed", pixels: 0, health: [], gate: [] });
   }
 
   const count = (r) => entries.filter((e) => e.result === r).length;
@@ -118,7 +134,11 @@ export function compare({ baseDir, headDir, outDir, baselinesDir, cfg, threshold
   const recorded = checked ? provenance.read(baselinesDir) : null;
   const reasons = checked ? provenance.staleness(recorded, provenance.current(cfg)) : [];
   const unchecked = checked && recorded?.viewports && !cfg ? ["viewports"] : [];
-  const summary = { total: entries.length, changed: count("changed"), new: count("new"), removed: count("removed"), same: count("same"), ...(baselinesDir ? { baselines: { stale: reasons.length > 0, reasons, unchecked } } : {}), entries };
+  // The verdict `--fail-on-health` acts on; always reported, so a workflow can post a status without parsing the table.
+  const failing = entries.filter((e) => e.gate.length);
+  const gated = (kind) => failing.reduce((n, e) => n + e.gate.filter((g) => g.kind === kind).length, 0);
+  const verdict = { ok: failing.length === 0, console: gated("console"), axe: gated("axe"), entries: failing.map((e) => ({ file: e.file, findings: e.gate.map((g) => g.text) })) };
+  const summary = { total: entries.length, changed: count("changed"), new: count("new"), removed: count("removed"), same: count("same"), health: verdict, ...(baselinesDir ? { baselines: { stale: reasons.length > 0, reasons, unchecked } } : {}), entries };
   writeFileSync(path.join(outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeFileSync(path.join(outDir, "summary.md"), markdown(summary));
   writeFileSync(path.join(outDir, "index.html"), html(summary));
@@ -133,6 +153,7 @@ function markdown(s) {
   if (s.baselines?.unchecked?.length) lines.push(`> The committed baselines' ${s.baselines.unchecked.join(", ")} were not checked: \`compare\` ran without \`--config\`.`, "");
   if (s.baselines?.stale) lines.push(`> **The committed baselines look stale:** ${s.baselines.reasons.join("; ")}. Differences below may only be that; regenerate them with \`make visual-baseline\`.`, "");
   if (s.total > 0 && s.new === s.total) lines.push("> **Every shot is new: the base rendered nothing.** The comparison says nothing; look at the base capture above.", "");
+  if (!s.health.ok) lines.push(`> **Health gate: ${s.health.entries.length} shot(s) with new findings** (${s.health.console} new console error(s), ${s.health.axe} new or increased serious/critical axe rule(s)): ${s.health.entries.map((e) => `\`${e.file}\``).join(", ")}. \`--fail-on-health\` fails on these.`, "");
   const interesting = s.entries.filter((e) => e.result !== "same" || e.health.length);
   if (!interesting.length) return `${lines.join("\n")}Nothing changed.\n`;
   lines.push("| Shot | Result | Detail |", "| --- | --- | --- |");
@@ -161,6 +182,7 @@ ${e.health.length ? `<ul>${e.health.map((h) => `<li>${esc(h)}</li>`).join("")}</
 figcaption{color:#8a8f98;margin-bottom:4px}section{margin-bottom:40px}li{color:#e0b341}.stale{color:#e0b341}</style>
 <h1>Visual check</h1><p>${s.total} shots: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical.</p>
 ${s.baselines?.unchecked?.length ? `<p class="stale">The committed baselines' ${esc(s.baselines.unchecked.join(", "))} were not checked: <code>compare</code> ran without <code>--config</code>.</p>` : ""}
+${s.health.ok ? "" : `<p class="stale"><b>Health gate:</b> ${esc(s.health.entries.length)} shot(s) with new console errors or serious/critical axe nodes: ${esc(s.health.entries.map((e) => e.file).join(", "))}.</p>`}
 ${s.baselines?.stale ? `<p class="stale"><b>The committed baselines look stale:</b> ${esc(s.baselines.reasons.join("; "))}. Differences below may only be that; regenerate them with <code>make visual-baseline</code>.</p>` : ""}
 ${rows || "<p>Nothing changed.</p>"}`;
 }
