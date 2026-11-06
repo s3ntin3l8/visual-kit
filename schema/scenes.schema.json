@@ -86,6 +86,7 @@
         },
         "viewports": { "type": "array", "items": { "type": "string" }, "description": "Limit the scene to these viewport names." },
         "schemes": { "type": "array", "items": { "enum": ["light", "dark"] }, "description": "Limit the scene to these colour schemes." },
+        "motion": { "enum": ["reduce", "normal"], "default": "reduce", "description": "\"reduce\" (default) emulates prefers-reduced-motion and disables animations and transitions; \"normal\" renders with the page's own motion. Stills only: a loop is always recorded with reduced motion." },
         "steps": { "type": "array", "items": { "$ref": "#/definitions/step" } },
         "settle": {
           "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "integer", "minimum": 0, "maximum": 5000 }],

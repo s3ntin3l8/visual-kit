@@ -88,7 +88,7 @@ export function variants(cfg, profileName, scene) {
   const out = [];
   for (const vp of names) {
     for (const scheme of schemes) {
-      out.push({ vp, scheme, viewport: viewports[vp], file: profile.file(scene.name, vp, scheme) });
+      out.push({ vp, scheme, motion: scene.motion ?? "reduce", viewport: viewports[vp], file: profile.file(scene.name, vp, scheme) });
     }
   }
   return out;

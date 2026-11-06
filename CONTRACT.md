@@ -131,6 +131,10 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
   (only `landing` and `readme` record loops; `check` and `audit` skip it, so any other tag set would render it
   nowhere, which validation refuses). It renders no PNG for any viewport or scheme. An empty `viewports` list is
   refused; use `stills: false`.
+- **`motion`** (default `"reduce"`): `"normal"` renders the scene's stills without the reduced-motion emulation
+  (`matchMedia("(prefers-reduced-motion: reduce)").matches` is `false`) and without the rule that switches CSS
+  animations and transitions off, so a bug that only exists on the normal-motion path can show. The caret stays
+  hidden and `Date` stays fixed. Loops are not affected: they always record with reduced motion. Per scene only.
 - **Steps** are declarative, one action each: `click`, `hover`, `fill` (+`value`), `press`, `waitFor`,
   `wait` (≤ 5000 ms). Selectors are Playwright selectors. There is no code in the config.
 - **`target`** shoots one element plus `padding` (default 24) at full device scale, instead of the page. This is
@@ -201,7 +205,7 @@ not affected: no mount, no watcher.
 ## What the runner does to every shot
 
 Fonts are loaded, nothing is `aria-busy`, the network is idle, animations and transitions are disabled, the
-caret is hidden, reduced motion is on, and `Date` is fixed to `clock`. Anything still volatile goes in `mask`.
+caret is hidden, reduced motion is on (unless the scene sets `motion: "normal"`), and `Date` is fixed to `clock`. Anything still volatile goes in `mask`.
 A scene that fails is reported and the others still render; the run exits non-zero.
 
 **Output is replaced wholesale, and only when it is safe.** A run renders into a staging folder and swaps it in
@@ -239,4 +243,6 @@ For each app it pulls with `make screenshots-landing OUT=<dir>`:
 1. Seed relative dates from one anchor (`DEMO_NOW`), and run the demo server under that clock.
 2. Set `clock` to the same instant.
 3. `mask` or seed away anything random: avatars, ids, "n seconds ago".
-4. Run `make visual-check` twice on an unchanged tree: the report must say `0 changed`.
+4. A scene with `motion: "normal"` is not frozen by the runner: `mask` the regions that move (spinners, carousels,
+   running transitions) or the shot will not repeat.
+5. Run `make visual-check` twice on an unchanged tree: the report must say `0 changed`.

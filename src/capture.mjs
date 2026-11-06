@@ -15,6 +15,10 @@ const SETTLE_TIMEOUT_MS = 30_000;
 const BASE_STYLE = `
   *, *::before, *::after { animation-delay: 0s !important; animation-duration: 0s !important; transition: none !important; caret-color: transparent !important; scroll-behavior: auto !important; }
 `;
+// motion: "normal" keeps the page's own animations and transitions; only the caret stays hidden.
+const NORMAL_MOTION_STYLE = `
+  *, *::before, *::after { caret-color: transparent !important; }
+`;
 
 async function runStep(page, step) {
   if ("click" in step) await page.click(step.click);
@@ -74,14 +78,15 @@ async function spotlight(page, selector, dim) {
 }
 
 async function newContext(browser, cfg, variant, extra = {}) {
-  const { viewport, scheme } = variant;
+  const { viewport, scheme, motion } = variant;
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     deviceScaleFactor: viewport.scale ?? 1,
     isMobile: viewport.mobile ?? false,
     hasTouch: viewport.mobile ?? false,
     colorScheme: scheme,
-    reducedMotion: "reduce",
+    // "normal" leaves it unset so matchMedia("(prefers-reduced-motion: reduce)") is false.
+    ...(motion === "normal" ? {} : { reducedMotion: "reduce" }),
     locale: cfg.locale,
     storageState: cfg.storageState ? path.resolve(cfg.storageState) : undefined,
     ...extra,
@@ -126,7 +131,7 @@ async function openScene({ context, cfg, scene, variant, hooks, baseUrl }) {
   }
   await hooks?.beforeScene?.({ context, page, scene, variant, cfg });
   const response = await page.goto(sceneUrl(baseUrl, scene.path), { waitUntil: "load" });
-  await page.addStyleTag({ content: BASE_STYLE });
+  await page.addStyleTag({ content: variant.motion === "normal" ? NORMAL_MOTION_STYLE : BASE_STYLE });
   await settlePage(page, scene, hooks);
   return { page, response, consoleErrors };
 }
