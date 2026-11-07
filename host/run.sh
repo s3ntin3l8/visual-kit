@@ -283,7 +283,7 @@ case "$MODE" in
         [ -f "$file" ] || continue
         h=$(git hash-object -- "$file") || die "cannot hash $file (baseHarness)"
         KEY_FILES="$KEY_FILES$file=$h "
-      done < <(git ls-files -z -co --exclude-standard -- "$f")
+      done < <(git ls-files -z -co --exclude-standard -- ":(literal)$f")
     done
     set +f
     KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "$([ -f "$HOST_HOOKS" ] && git hash-object "$HOST_HOOKS")" "${DEMO_NOW:-}" "$KEY_FILES" | sha256 | cut -c1-16)
@@ -305,22 +305,26 @@ case "$MODE" in
       git worktree remove --force "$WORKTREE" 2>/dev/null || true
       rm -rf "$WORKTREE"
       git worktree add --detach --force "$WORKTREE" "$MERGE_BASE" >/dev/null
+      # baseHarness: the head's copy of the harness replaces the merge base's, so only the app differs between the sides.
+      # Before the baseDeps links below: replacing a folder must not delete a dependency link inside it.
+      set -f
+      for f in $BASE_HARNESS; do
+        rm -rf "${WORKTREE:?}/$f"
+        n=0
+        while IFS= read -r -d '' file; do
+          [ -f "$file" ] || continue
+          mkdir -p "$WORKTREE/$(dirname "$file")"
+          cp -p "$file" "$WORKTREE/$file"
+          n=$((n + 1))
+        done < <(git ls-files -z -co --exclude-standard -- ":(literal)$f")
+        [ "$n" -gt 0 ] || echo "visual-kit: baseHarness \"$f\" matches no file in the working tree; the base gets none of it (typo?)" >&2
+      done
+      set +f
       for dep in $BASE_DEPS; do
         [ -e "$ROOT/$dep" ] || continue
         mkdir -p "$WORKTREE/$(dirname "$dep")"
         [ -e "$WORKTREE/$dep" ] || ln -s "$ROOT/$dep" "$WORKTREE/$dep"
       done
-      # baseHarness: the head's copy of the harness replaces the merge base's, so only the app differs between the sides.
-      set -f
-      for f in $BASE_HARNESS; do
-        rm -rf "${WORKTREE:?}/$f"
-        while IFS= read -r -d '' file; do
-          [ -f "$file" ] || continue
-          mkdir -p "$WORKTREE/$(dirname "$file")"
-          cp -p "$file" "$WORKTREE/$file"
-        done < <(git ls-files -z -co --exclude-standard -- "$f")
-      done
-      set +f
       start_demo "$WORKTREE"
       # Scenes are read from the working tree's config, so one that needs a selector the base does not have
       # yet fails here. That is expected for new UI: it shows up as "new" in the report.

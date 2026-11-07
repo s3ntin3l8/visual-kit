@@ -33,7 +33,7 @@ function semanticProblems(cfg) {
   for (const p of cfg.baseHarness ?? []) {
     // The launcher replaces these paths in the base worktree, so none may be the worktree or its git data.
     const segments = p.split("/");
-    if (segments.includes(".") || segments.includes("") || segments[0] === ".git") out.push(`baseHarness "${p}" must be a path inside the repo, not "." or .git`);
+    if (segments.includes(".") || segments.includes("") || segments[0] === ".git") out.push(`baseHarness "${p}" must be a path inside the repo: no empty or "." segment, not .git`);
   }
   const knownViewports = new Set([...Object.values(PROFILES).flatMap((p) => Object.keys(p.viewports)), ...Object.keys(cfg.viewports ?? {})]);
   const seen = new Set();

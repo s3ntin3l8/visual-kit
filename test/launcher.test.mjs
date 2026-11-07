@@ -193,6 +193,18 @@ describe("launcher baseHarness", { timeout: 60_000 }, () => {
     assert.deepEqual(seenBy(seen).split("\n").slice(0, 3), ["base", "base app", "cat: harness/new.txt: No such file or directory"]);
   });
 
+  test("a dependency link inside a listed path survives, and a path that matches nothing is called out", () => {
+    const { r, env, seen } = setup("base-harness-deps");
+    mkdirSync(path.join(r.dir, "harness/deps"));
+    writeFileSync(path.join(r.dir, "harness/deps/marker.txt"), "dep\n");
+    writeFileSync(path.join(r.dir, ".gitignore"), "harness/deps\n");
+    spawnSync("git", ["rm", "-rq", "--cached", "harness/deps"], { cwd: r.dir });
+    const res = run(r, ["check", "--base", "base"], { env: { ...env, STUB_BASE_DEPS: "harness/deps", STUB_BASE_HARNESS: "harness typo", STUB_DEMO_PREFIX: `cat harness/deps/marker.txt >>${seen} 2>&1;` } });
+    assert.match(seenBy(seen), /^dep$/m, res.out);
+    assert.match(res.out, /baseHarness "typo" matches no file/);
+    assert.doesNotMatch(res.out, /baseHarness "harness" matches no file/);
+  });
+
   test("an edit to a listed path invalidates the cached base, an unlisted one does not", () => {
     const { r, env } = setup("base-harness-key");
     const cacheFor = () => {
