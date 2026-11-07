@@ -450,7 +450,7 @@ test("compare CLI: --fail-on-unstable exits 4 and names each shot that differs b
   const res = cli();
   assert.equal(res.status, 4);
   assert.match(res.stderr, /3 shot\(s\) differ/);
-  assert.match(res.stderr, /a\.png: 100 px differ \(tolerance 20 px\)/);
+  assert.match(res.stderr, /a\.png: 100 px differ between first and second \(tolerance 20 px\)/);
   assert.match(res.stderr, /gone\.png: only in the first run/);
   assert.match(res.stderr, /extra\.png: only in the second run/);
   assert.equal(cli(["--max-diff-pixels", "100"]).status, 4, "a removed and a new shot still fail");
