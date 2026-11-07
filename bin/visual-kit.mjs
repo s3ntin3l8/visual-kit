@@ -7,14 +7,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { capture } from "../src/capture.mjs";
-import { compare } from "../src/compare.mjs";
+import { DEFAULT_MAX_DIFF_PIXELS, DEFAULT_THRESHOLD, compare } from "../src/compare.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { PROFILES } from "../src/profiles.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const USAGE = `usage:
   visual-kit capture <${Object.keys(PROFILES).join("|")}> --config FILE --url URL --out DIR [--routes a,b] [--baseline-only]
-  visual-kit compare --base DIR --head DIR --out DIR [--config FILE] [--baselines DIR] [--max-diff-pixels N] [--threshold T] [--fail-on-diff] [--fail-on-health]
+  visual-kit compare --base DIR --head DIR --out DIR [--config FILE] [--baselines DIR] [--max-diff-pixels N] [--threshold T] [--fail-on-diff] [--fail-on-health] [--fail-on-unstable]
   visual-kit env --config FILE      shell assignments for the host launcher
   visual-kit host-files             tar of host/ on stdout (the launcher the Makefile extracts)
   visual-kit validate --config FILE
@@ -33,6 +33,7 @@ const options = {
   threshold: { type: "string" },
   "fail-on-diff": { type: "boolean", default: false },
   "fail-on-health": { type: "boolean", default: false },
+  "fail-on-unstable": { type: "boolean", default: false },
 };
 
 async function main() {
@@ -81,12 +82,29 @@ async function main() {
       }
       const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.config ? loadConfig(values.config) : undefined, maxDiffPixels, threshold });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
-      if (values["fail-on-diff"] && (s.changed || s.removed)) return 2;
+      // With --fail-on-unstable, --base and --head are two captures of one tree: any shot that is not the same is
+      // nondeterminism, not a change. Every gate reports; the exit code is the most specific one (4, then 2, then 3).
+      let code = 0;
+      if (values["fail-on-unstable"]) {
+        const unstable = s.entries.filter((e) => e.result !== "same");
+        // The report's own words: base is the first capture, head the second. "new" is also a shot whose base answered an error status.
+        const why = (e) => {
+          if (e.result === "removed") return `${e.file}: only in base (the first capture)`;
+          if (e.result === "new") return `${e.file}: only in head (the second capture), or base answered an error status`;
+          const tol = e.tolerance ?? { maxDiffPixels: DEFAULT_MAX_DIFF_PIXELS, threshold: DEFAULT_THRESHOLD };
+          return `${e.file}: ${e.resized ? "different size" : `${e.pixels} px differ`} between base and head (tolerance ${tol.maxDiffPixels} px at threshold ${tol.threshold})`;
+        };
+        if (unstable.length) {
+          console.error(`visual-kit: determinism failure: ${unstable.length} shot(s) differ between two captures of the same tree (base = first, head = second):\n  - ${unstable.map(why).join("\n  - ")}`);
+          code = 4;
+        }
+      }
+      if (values["fail-on-diff"] && (s.changed || s.removed)) code ||= 2;
       if (values["fail-on-health"] && !s.health.ok) {
         console.error(`visual-kit: health gate: ${s.health.entries.length} shot(s) with new findings (${s.health.console} console, ${s.health.axe} axe)`);
-        return 3;
+        code ||= 3;
       }
-      return 0;
+      return code;
     }
     default:
       console.error(USAGE);

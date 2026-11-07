@@ -445,6 +445,29 @@ test("compare CLI: a --config that does not exist is an error, not a silent skip
   assert.equal(spawnSync("node", args, { encoding: "utf8" }).status, 0, "without --config the check simply skips the viewport table");
 });
 
+test("compare CLI: --fail-on-unstable exits 4 and names each shot that differs between two captures of one tree", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "vk-unstable-"));
+  for (const side of ["first", "second"]) mkdirSync(path.join(dir, side));
+  const shot = (side, name, color, w = 10) => writeFileSync(path.join(dir, side, name), PNG.sync.write(png(w, 10, color)));
+  const cli = (extra = []) => spawnSync("node", [path.join(import.meta.dirname, "..", "bin", "visual-kit.mjs"), "compare", "--base", path.join(dir, "first"), "--head", path.join(dir, "second"), "--out", path.join(dir, "r"), "--fail-on-unstable", ...extra], { encoding: "utf8" });
+  shot("first", "a.png", [1, 1, 1, 255]);
+  shot("second", "a.png", [1, 1, 1, 255]);
+  assert.equal(cli().status, 0, "identical captures repeat");
+  shot("second", "a.png", [250, 250, 250, 255]);
+  shot("first", "gone.png", [1, 1, 1, 255]);
+  shot("second", "extra.png", [1, 1, 1, 255]);
+  const res = cli();
+  assert.equal(res.status, 4);
+  assert.match(res.stderr, /3 shot\(s\) differ/);
+  assert.match(res.stderr, /a\.png: 100 px differ between base and head \(tolerance 20 px at threshold 0\.1\)/);
+  assert.match(res.stderr, /gone\.png: only in base \(the first capture\)\n/);
+  assert.match(res.stderr, /extra\.png: only in head \(the second capture\), or base answered/);
+  assert.equal(cli(["--max-diff-pixels", "100"]).status, 4, "a removed and a new shot still fail");
+  const both = cli(["--fail-on-diff"]);
+  assert.equal(both.status, 4, "the most specific gate wins");
+  assert.match(both.stderr, /determinism failure/);
+});
+
 test("compare: the health verdict counts new console errors and serious axe nodes, never pixels or fixes", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "vk-gate-"));
   const m = (over) => ({ status: 200, axe: [], console: [], overflow: false, unnamed: 0, ...over });

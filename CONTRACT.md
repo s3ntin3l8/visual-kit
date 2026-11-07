@@ -209,6 +209,22 @@ changes an exit code by default. `compare --fail-on-health` adds a second, indep
   with `compare`'s code, after writing the report. Unset or `0` leaves the check as before. Whether either gate is required is the
   consumer's decision.
 
+### Determinism self-check
+
+Re-renders of one tree are not byte-identical and a flaky scene shows up only as a spurious `changed` on someone's PR.
+`make visual-check REPEAT=2` (or `run.sh check --repeat 2`; 1 to 99, default 1; an unusable `REPEAT` from the environment is ignored with a warning, an unusable `--repeat` is an error) proves the capture repeats:
+
+- The launcher captures the working tree `REPEAT` times (the demo restarts for each run, so state that leaks between
+  runs shows up) and compares run 2..N to run 1 with `compare --fail-on-unstable`, using the same per-scene tolerance
+  as the real compare, no baselines. In `determinism-<n>/` and in the messages, `base` is run 1 and `head` run n. Only the head is captured again: the base comes from the cache as usual.
+- Any shot that is `changed`, `new` or `removed` between the runs is a **determinism failure**: `compare` prints each
+  shot with its pixel count, or "different size" for a resized one (stderr) and exits **4**; the launcher also exits 4, whatever the verdict of the
+  real compare was (it is still printed), because a capture that does not repeat says nothing reliable about it.
+  The reports (diff images) are in `determinism-<n>/` next to `report/`.
+- Costs `REPEAT - 1` extra captures of the head. `compare --fail-on-diff` (2), `--fail-on-health` (3) and
+  `--fail-on-unstable` (4) are independent: each reports its own finding, and when several fail the exit code is the most specific (4, then 2, then 3). A scene that fails only on a repeat capture is not blamed on the first run: the compare sees its missing shots.
+- Auto-masking the unstable region is not done: the listed shots tell which selector to `mask`.
+
 ### Host hooks
 
 `hooks.mjs` runs inside the image and reaches the demo only over HTTP. A demo that needs something done on the
@@ -279,4 +295,5 @@ For each app it pulls with `make screenshots-landing OUT=<dir>`:
 3. `mask` or seed away anything random: avatars, ids, "n seconds ago".
 4. A scene with `motion: "normal"` is not frozen by the runner: `mask` the regions that move (spinners, carousels,
    running transitions) or the shot will not repeat.
-5. Run `make visual-check` twice on an unchanged tree: the report must say `0 changed`.
+5. Run `make visual-check REPEAT=2` on an unchanged tree: it must report no determinism failure (the report of a
+   normal check on an unchanged tree says `0 changed`).

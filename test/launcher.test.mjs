@@ -154,6 +154,60 @@ describe("launcher cache key", { timeout: 60_000 }, () => {
   });
 });
 
+describe("launcher --repeat", { timeout: 60_000 }, () => {
+  const headCaptures = (r) => log(r).split("\n").filter((l) => l.includes(" capture check ") && l.includes("/out/") && !l.includes("/shots")).length;
+  const env = (r, extra = {}) => ({ XDG_CACHE_HOME: path.join(r.dir, "cache"), ...extra });
+
+  test("captures the tree again N-1 times and holds each run against the first", () => {
+    const r = repo("repeat");
+    const res = run(r, ["check", "--base", "main", "--repeat", "3"], { env: env(r) });
+    assert.equal(res.status, 0, res.out);
+    assert.equal(headCaptures(r), 3, log(r));
+    assert.match(log(r), /--out \/out\/repeat-2/);
+    assert.match(log(r), /--out \/out\/repeat-3/);
+    assert.match(log(r), /compare --base \/out\/head --head \/out\/repeat-2 --out \/out\/determinism-2 --config visual\/scenes\.json --fail-on-unstable/);
+    assert.match(log(r), /compare --base \/out\/head --head \/out\/repeat-3 /);
+  });
+
+  test("a capture that does not repeat exits 4 and says so, whatever the verdict was", () => {
+    const r = repo("repeat-unstable");
+    const res = run(r, ["check", "--base", "main"], { env: env(r, { REPEAT: "2", STUB_UNSTABLE_RC: "4" }) });
+    assert.equal(res.status, 4, res.out);
+    assert.match(res.out, /not deterministic/);
+  });
+
+  test("without --repeat nothing is captured twice and no determinism compare runs", () => {
+    const r = repo("repeat-off");
+    const res = run(r, ["check", "--base", "main"], { env: env(r, { STUB_UNSTABLE_RC: "4" }) });
+    assert.equal(res.status, 0, res.out);
+    assert.doesNotMatch(log(r), /fail-on-unstable|repeat-2/);
+  });
+
+  test("an unrelated REPEAT in the environment does not break the other modes", () => {
+    const r = repo("repeat-env");
+    const res = run(r, ["landing", "--out", "out"], { env: env(r, { REPEAT: "yes" }) });
+    assert.doesNotMatch(res.out, /whole number|check mode/);
+    const checked = run(r, ["check", "--base", "main"], { env: env(r, { REPEAT: "yes" }) });
+    assert.equal(checked.status, 0, checked.out);
+    assert.match(checked.out, /ignoring REPEAT="yes"/);
+    assert.match(run(r, ["check", "--repeat", "yes"]).out, /must be a whole number/);
+  });
+
+  test("a scene that fails only on a repeat is not blamed on the first run, and the compare still decides", () => {
+    const r = repo("repeat-fail");
+    // The stub fails every capture into repeat-2 and leaves no shot there.
+    const res = run(r, ["check", "--base", "main", "--repeat", "2"], { env: env(r, { STUB_FAIL_CAPTURE: "repeat-2", STUB_UNSTABLE_RC: "4" }) });
+    assert.equal(res.status, 4, res.out);
+    assert.doesNotMatch(res.out, /failed to render on the working tree/);
+  });
+
+  test("a bad count, and --repeat outside check, are refused", () => {
+    const r = repo("repeat-bad");
+    for (const bad of ["0", "x", "2x", "100", ""]) assert.match(run(r, ["check", "--repeat", bad]).out, /must be a whole number/, bad);
+    assert.match(run(r, ["landing", "--out", "out", "--repeat", "2"]).out, /for the check mode/);
+  });
+});
+
 describe("launcher baseHarness", { timeout: 60_000 }, () => {
   // The stub's demo copies what it finds in the harness folder, so the file shows which side's copy the base was rendered with.
   const setup = (name) => {
