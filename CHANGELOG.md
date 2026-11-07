@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/s3ntin3l8/visual-kit/compare/visual-kit-v0.3.0...visual-kit-v0.4.0) (2026-11-07)
+
+
+### Features
+
+* baseHarness, render the base with the head's harness paths ([#39](https://github.com/s3ntin3l8/visual-kit/issues/39)) ([babecdc](https://github.com/s3ntin3l8/visual-kit/commit/babecdcccf56b788ac4bd5bd7bcff8dd4237f21f))
+* check --repeat N, a determinism self-check ([#40](https://github.com/s3ntin3l8/visual-kit/issues/40)) ([0612913](https://github.com/s3ntin3l8/visual-kit/commit/0612913e6c5aead2fe454d475b8f7ce995c267b1))
+
 ## [0.3.0](https://github.com/s3ntin3l8/visual-kit/compare/visual-kit-v0.2.0...visual-kit-v0.3.0) (2026-11-06)
 
 
