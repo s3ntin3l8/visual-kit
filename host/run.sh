@@ -112,7 +112,7 @@ kit() {
   docker run --rm --ipc=host "${net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -e "VISUAL_KIT_FORCE=$FORCE" "${mounts[@]}" ${KIT_EXTRA[@]+"${KIT_EXTRA[@]}"} -w /work "$IMAGE" "$@"
 }
 
-# DEMO_START DEMO_URL DEMO_READY DEMO_TIMEOUT BASE_DEPS CACHE_KEY_FILES (+ the demo's exported env).
+# DEMO_START DEMO_URL DEMO_READY DEMO_TIMEOUT BASE_DEPS CACHE_KEY_FILES BASE_HARNESS (+ the demo's exported env).
 # Assigned first: a failure inside `eval "$(…)"` would be swallowed.
 HOST_ENV=$(kit "" env --config "$CONFIG") || die "cannot read $CONFIG"
 eval "$HOST_ENV"
@@ -287,6 +287,15 @@ case "$MODE" in
       if [ -f "$f" ]; then h=$(git hash-object -- "$f") || die "cannot hash $f (cacheKeyFiles)"; else h=absent; fi
       KEY_FILES="$KEY_FILES$f=$h "
     done
+    # baseHarness: the base is rendered with the working tree's copy of these paths, so what they hold is part of the key.
+    # Tracked and untracked-but-not-ignored files, as the working tree has them.
+    for f in $BASE_HARNESS; do
+      while IFS= read -r -d '' file; do
+        [ -f "$file" ] || continue
+        h=$(git hash-object -- "$file") || die "cannot hash $file (baseHarness)"
+        KEY_FILES="$KEY_FILES$file=$h "
+      done < <(git ls-files -z -co --exclude-standard -- ":(literal)$f")
+    done
     set +f
     KEY=$(printf '%s\n' "$MERGE_BASE" "$IMAGE_ID" "$ROUTES" "$(git hash-object "$CONFIG")" "$([ -f "$HOOKS" ] && git hash-object "$HOOKS")" "$([ -f "$HOST_HOOKS" ] && git hash-object "$HOST_HOOKS")" "${DEMO_NOW:-}" "$KEY_FILES" | sha256 | cut -c1-16)
     CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/visual-kit/$(basename "$ROOT")-$(printf '%s' "$ROOT" | sha256 | cut -c1-8)"
@@ -307,6 +316,21 @@ case "$MODE" in
       git worktree remove --force "$WORKTREE" 2>/dev/null || true
       rm -rf "$WORKTREE"
       git worktree add --detach --force "$WORKTREE" "$MERGE_BASE" >/dev/null
+      # baseHarness: the head's copy of the harness replaces the merge base's, so only the app differs between the sides.
+      # Before the baseDeps links below: replacing a folder must not delete a dependency link inside it.
+      set -f
+      for f in $BASE_HARNESS; do
+        rm -rf "${WORKTREE:?}/$f"
+        n=0
+        while IFS= read -r -d '' file; do
+          [ -f "$file" ] || continue
+          mkdir -p "$WORKTREE/$(dirname "$file")"
+          cp -p "$file" "$WORKTREE/$file"
+          n=$((n + 1))
+        done < <(git ls-files -z -co --exclude-standard -- ":(literal)$f")
+        [ "$n" -gt 0 ] || echo "visual-kit: baseHarness \"$f\" matches no file in the working tree; the base gets none of it (typo?)" >&2
+      done
+      set +f
       for dep in $BASE_DEPS; do
         [ -e "$ROOT/$dep" ] || continue
         mkdir -p "$WORKTREE/$(dirname "$dep")"

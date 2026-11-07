@@ -87,6 +87,15 @@ test("config: cacheKeyFiles are repo-relative paths without spaces", () => {
   }
 });
 
+test("config: baseHarness are repo-relative paths that cannot be the repo or its git data", () => {
+  assert.equal(loadConfig(config({ baseHarness: ["scripts/demo", "visual/hooks.mjs"] })).baseHarness.length, 2);
+  assert.match(hostEnv({ demo: { start: "x", url: "http://127.0.0.1:1" }, baseHarness: ["scripts/demo", "visual"] }), /^BASE_HARNESS='scripts\/demo visual'$/m);
+  assert.match(hostEnv({ demo: { start: "x", url: "http://127.0.0.1:1" } }), /^BASE_HARNESS=''$/m);
+  for (const bad of ["/etc", "../x", "a/../../x", "has space", "dir/*", "-x", ".", "./", "a/./b", ".git", ".git/hooks", "a//b"]) {
+    assert.throws(() => loadConfig(config({ baseHarness: [bad] })), /baseHarness/, bad);
+  }
+});
+
 test("profiles: the landing spec is the one personal-landing expects", () => {
   const landing = PROFILES.landing;
   assert.deepEqual(landing.schemes, ["dark"]);
