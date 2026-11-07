@@ -187,7 +187,10 @@ describe("launcher --repeat", { timeout: 60_000 }, () => {
     const r = repo("repeat-env");
     const res = run(r, ["landing", "--out", "out"], { env: env(r, { REPEAT: "yes" }) });
     assert.doesNotMatch(res.out, /whole number|check mode/);
-    assert.match(run(r, ["check"], { env: env(r, { REPEAT: "yes" }) }).out, /whole number/);
+    const checked = run(r, ["check", "--base", "main"], { env: env(r, { REPEAT: "yes" }) });
+    assert.equal(checked.status, 0, checked.out);
+    assert.match(checked.out, /ignoring REPEAT="yes"/);
+    assert.match(run(r, ["check", "--repeat", "yes"]).out, /must be a whole number/);
   });
 
   test("a scene that fails only on a repeat is not blamed on the first run, and the compare still decides", () => {

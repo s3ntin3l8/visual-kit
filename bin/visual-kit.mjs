@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { capture } from "../src/capture.mjs";
-import { DEFAULT_MAX_DIFF_PIXELS, compare } from "../src/compare.mjs";
+import { DEFAULT_MAX_DIFF_PIXELS, DEFAULT_THRESHOLD, compare } from "../src/compare.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { PROFILES } from "../src/profiles.mjs";
 
@@ -86,12 +86,16 @@ async function main() {
       // nondeterminism, not a change. Every gate reports; the exit code is the most specific one (4, then 2, then 3).
       let code = 0;
       if (values["fail-on-unstable"]) {
-        const [first, second] = [path.basename(values.base), path.basename(values.head)];
         const unstable = s.entries.filter((e) => e.result !== "same");
-        // "new" is also a shot whose first capture answered an error status; both mean it did not repeat.
-        const why = (e) => (e.result === "removed" ? `${e.file}: only in ${first}` : e.result === "new" ? `${e.file}: only in ${second} (or ${first} answered an error status)` : `${e.file}: ${e.resized ? "different size" : `${e.pixels} px differ`} between ${first} and ${second} (tolerance ${(e.tolerance ?? { maxDiffPixels: DEFAULT_MAX_DIFF_PIXELS }).maxDiffPixels} px)`);
+        // The report's own words: base is the first capture, head the second. "new" is also a shot whose base answered an error status.
+        const why = (e) => {
+          if (e.result === "removed") return `${e.file}: only in base (the first capture)`;
+          if (e.result === "new") return `${e.file}: only in head (the second capture), or base answered an error status`;
+          const tol = e.tolerance ?? { maxDiffPixels: DEFAULT_MAX_DIFF_PIXELS, threshold: DEFAULT_THRESHOLD };
+          return `${e.file}: ${e.resized ? "different size" : `${e.pixels} px differ`} between base and head (tolerance ${tol.maxDiffPixels} px at threshold ${tol.threshold})`;
+        };
         if (unstable.length) {
-          console.error(`visual-kit: determinism failure: ${unstable.length} shot(s) differ between two captures of the same tree:\n  - ${unstable.map(why).join("\n  - ")}`);
+          console.error(`visual-kit: determinism failure: ${unstable.length} shot(s) differ between two captures of the same tree (base = first, head = second):\n  - ${unstable.map(why).join("\n  - ")}`);
           code = 4;
         }
       }

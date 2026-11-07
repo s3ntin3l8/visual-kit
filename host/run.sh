@@ -66,7 +66,12 @@ done
 # Only check reads REPEAT (like HEALTH_GATE), so an unrelated REPEAT in the environment cannot break the other modes.
 [ "$MODE" = check ] || [ "$REPEAT_FLAG" = 0 ] || die "--repeat is for the check mode"
 if [ "$MODE" = check ]; then
-  case "$REPEAT" in [1-9] | [1-9][0-9]) ;; *) die "--repeat (REPEAT) must be a whole number from 1 to 99, got \"$REPEAT\"" ;; esac
+  case "$REPEAT" in
+    [1-9] | [1-9][0-9]) ;;
+    # REPEAT is a generic name another tool may export: from the environment a bad value is skipped, not fatal.
+    *) if [ "$REPEAT_FLAG" = 1 ]; then die "--repeat must be a whole number from 1 to 99, got \"$REPEAT\""; fi
+       echo "visual-kit: ignoring REPEAT=\"$REPEAT\" (not a whole number from 1 to 99); capturing once" >&2; REPEAT=1 ;;
+  esac
 fi
 IMAGE=${VISUAL_KIT_IMAGE:?VISUAL_KIT_IMAGE is not set}
 if [ -n "${VISUAL_KIT_HOST_NETWORK:-}" ]; then NETWORK=$VISUAL_KIT_HOST_NETWORK
@@ -365,7 +370,7 @@ case "$MODE" in
     fi
     # A capture that does not repeat says nothing reliable about the verdict above, so it decides the exit code.
     if [ "$UNSTABLE" = 1 ]; then
-      echo "visual-kit: not deterministic: two captures of this tree differ (reports: ${OUT#"$ROOT"/}/determinism-*/index.html)" >&2
+      echo "visual-kit: not deterministic: two captures of this tree differ (reports: ${OUT#"$ROOT"/}/determinism-*/index.html; there \"base\" is the first capture, \"head\" the repeat)" >&2
       exit 4
     fi
     # A scene that failed on a repeat only is not a verdict on the first run; if the shots still compared equal, say so.

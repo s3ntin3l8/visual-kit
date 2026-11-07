@@ -450,9 +450,9 @@ test("compare CLI: --fail-on-unstable exits 4 and names each shot that differs b
   const res = cli();
   assert.equal(res.status, 4);
   assert.match(res.stderr, /3 shot\(s\) differ/);
-  assert.match(res.stderr, /a\.png: 100 px differ between first and second \(tolerance 20 px\)/);
-  assert.match(res.stderr, /gone\.png: only in first\n/);
-  assert.match(res.stderr, /extra\.png: only in second \(or first answered/);
+  assert.match(res.stderr, /a\.png: 100 px differ between base and head \(tolerance 20 px at threshold 0\.1\)/);
+  assert.match(res.stderr, /gone\.png: only in base \(the first capture\)\n/);
+  assert.match(res.stderr, /extra\.png: only in head \(the second capture\), or base answered/);
   assert.equal(cli(["--max-diff-pixels", "100"]).status, 4, "a removed and a new shot still fail");
   const both = cli(["--fail-on-diff"]);
   assert.equal(both.status, 4, "the most specific gate wins");

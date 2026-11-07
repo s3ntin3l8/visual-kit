@@ -201,11 +201,11 @@ changes an exit code by default. `compare --fail-on-health` adds a second, indep
 ### Determinism self-check
 
 Re-renders of one tree are not byte-identical and a flaky scene shows up only as a spurious `changed` on someone's PR.
-`make visual-check REPEAT=2` (or `run.sh check --repeat 2`; 1 to 99, default 1) proves the capture repeats:
+`make visual-check REPEAT=2` (or `run.sh check --repeat 2`; 1 to 99, default 1; an unusable `REPEAT` from the environment is ignored with a warning, an unusable `--repeat` is an error) proves the capture repeats:
 
 - The launcher captures the working tree `REPEAT` times (the demo restarts for each run, so state that leaks between
   runs shows up) and compares run 2..N to run 1 with `compare --fail-on-unstable`, using the same per-scene tolerance
-  as the real compare, no baselines. Only the head is captured again: the base comes from the cache as usual.
+  as the real compare, no baselines. In `determinism-<n>/` and in the messages, `base` is run 1 and `head` run n. Only the head is captured again: the base comes from the cache as usual.
 - Any shot that is `changed`, `new` or `removed` between the runs is a **determinism failure**: `compare` prints each
   shot with its pixel count (stderr) and exits **4**; the launcher also exits 4, whatever the verdict of the
   real compare was (it is still printed), because a capture that does not repeat says nothing reliable about it.
