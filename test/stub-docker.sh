@@ -7,6 +7,7 @@ echo "$*" >>"$STUB_LOG"
 case " $* " in
   *" env --config "*)
     printf "DEMO_START='echo DEMO_READY; exec sleep 60'\nDEMO_URL='http://127.0.0.1:1'\nDEMO_READY='DEMO_READY'\nDEMO_TIMEOUT='5'\nBASE_DEPS=''\nCACHE_KEY_FILES='%s'\n" "$STUB_KEY_FILES" ;;
+  *" compare "*"--fail-on-unstable"*) exit "${STUB_UNSTABLE_RC:-0}" ;; # STUB_UNSTABLE_RC=4 plays a nondeterministic capture
   "image inspect"*) echo sha256:stubimage ;;
   *" capture "*)
     if [ -n "${STUB_HOSTCALL-}" ]; then

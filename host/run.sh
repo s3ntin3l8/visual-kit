@@ -2,7 +2,7 @@
 # Host side of visual-kit. The demo needs the host's toolchain, so it cannot run in the image:
 # this script boots it, runs the image against it and tears it down again.
 #
-#   run.sh <landing|readme|audit|check|baseline> [--routes a,b] [--out DIR] [--base REF] [--slug S] [--fresh] [--force]
+#   run.sh <landing|readme|audit|check|baseline> [--routes a,b] [--out DIR] [--base REF] [--slug S] [--fresh] [--force] [--repeat N]
 #
 # An output folder is replaced wholesale, so it must be one this tool wrote (it leaves a .visual-kit file),
 # an empty one, or --force. It can never be the repository, one of its parents, or inside .git.
@@ -49,7 +49,7 @@ sha256() {
 MODE=${1:-}; shift || true
 case "$MODE" in landing | readme | audit | check | baseline) ;; *) die "usage: run.sh <landing|readme|audit|check|baseline> [options]" ;; esac
 
-ROUTES="" OUT="" BASE_REF="origin/main" SLUG="" FRESH=0 FORCE=0
+ROUTES="" OUT="" BASE_REF="origin/main" SLUG="" FRESH=0 FORCE=0 REPEAT=${REPEAT:-1}
 while [ $# -gt 0 ]; do
   case "$1" in
     --routes) ROUTES=$2; shift 2 ;;
@@ -58,10 +58,13 @@ while [ $# -gt 0 ]; do
     --slug) SLUG=$2; shift 2 ;;
     --fresh) FRESH=1; shift ;;
     --force) FORCE=1; shift ;;
+    --repeat) REPEAT=$2; shift 2 ;;
     *) die "unknown option: $1" ;;
   esac
 done
 
+case "$REPEAT" in [1-9] | [1-9][0-9]) ;; *) die "--repeat (REPEAT) must be a whole number from 1 to 99, got \"$REPEAT\"" ;; esac
+[ "$REPEAT" = 1 ] || [ "$MODE" = check ] || die "--repeat is for the check mode"
 IMAGE=${VISUAL_KIT_IMAGE:?VISUAL_KIT_IMAGE is not set}
 if [ -n "${VISUAL_KIT_HOST_NETWORK:-}" ]; then NETWORK=$VISUAL_KIT_HOST_NETWORK
 elif [ "$(uname -s)" = Linux ]; then NETWORK=host
@@ -322,6 +325,16 @@ case "$MODE" in
     rm -rf "$OUT/head"
     HEAD_RC=0; capture check "$OUT/head" || HEAD_RC=$?
     stop_demo
+    # --repeat N: capture the working tree N-1 more times and hold each against the first run (below).
+    rm -rf "$OUT"/repeat-* "$OUT"/determinism-*
+    if [ "$REPEAT" -gt 1 ] && [ "$HEAD_RC" = 0 ]; then
+      for i in $(seq 2 "$REPEAT"); do
+        echo "visual-kit: capturing the working tree again ($i of $REPEAT, determinism)"
+        start_demo "$ROOT"
+        capture check "$OUT/repeat-$i" || HEAD_RC=$?
+        stop_demo
+      done
+    fi
     rm -rf "$OUT/base"
     if [ -d "$CACHE/shots" ]; then cp -R "$CACHE/shots" "$OUT/base"; else mkdir -p "$OUT/base"; fi
     # Committed baselines (visual/baselines) stand in for the merge base on the scenes that have one; the config
@@ -332,12 +345,25 @@ case "$MODE" in
     # HEALTH_GATE=1 (any non-empty value but 0) adds --fail-on-health: a new console error or serious/critical axe node exits 3.
     [ "${HEALTH_GATE:-0}" = 0 ] || BASELINE_ARGS+=(--fail-on-health)
     COMPARE_RC=0; kit "$OUT" compare --base /out/base --head /out/head --out /out/report ${BASELINE_ARGS[@]+"${BASELINE_ARGS[@]}"} --config "$CONFIG" || COMPARE_RC=$?
+    # Two captures of one tree must agree (same tolerance as the real compare); no baselines, no health: only pixels and presence.
+    UNSTABLE=0
+    if [ "$REPEAT" -gt 1 ] && [ "$HEAD_RC" = 0 ]; then
+      for i in $(seq 2 "$REPEAT"); do
+        DET_RC=0; kit "$OUT" compare --base /out/head --head "/out/repeat-$i" --out "/out/determinism-$i" --config "$CONFIG" --fail-on-unstable || DET_RC=$?
+        [ "$DET_RC" = 0 ] || UNSTABLE=1
+      done
+    fi
     echo "visual-kit: report at ${OUT#"$ROOT"/}/report/index.html (summary: ${OUT#"$ROOT"/}/report/summary.md)"
     # The report exists even when a scene failed on the working tree, but the failure is not forgotten.
     [ "$HEAD_RC" = 0 ] || die "some scenes failed to render on the working tree (see above)"
     if [ "$COMPARE_RC" != 0 ]; then
       echo "visual-kit: the report's verdict failed the check (exit $COMPARE_RC; see summary.md)" >&2
-      exit "$COMPARE_RC"
     fi
+    # A capture that does not repeat says nothing reliable about the verdict above, so it decides the exit code.
+    if [ "$UNSTABLE" = 1 ]; then
+      echo "visual-kit: not deterministic: two captures of this tree differ (reports: ${OUT#"$ROOT"/}/determinism-*/index.html)" >&2
+      exit 4
+    fi
+    [ "$COMPARE_RC" = 0 ] || exit "$COMPARE_RC"
     ;;
 esac
