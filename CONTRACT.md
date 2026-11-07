@@ -207,7 +207,7 @@ Re-renders of one tree are not byte-identical and a flaky scene shows up only as
   runs shows up) and compares run 2..N to run 1 with `compare --fail-on-unstable`, using the same per-scene tolerance
   as the real compare, no baselines. In `determinism-<n>/` and in the messages, `base` is run 1 and `head` run n. Only the head is captured again: the base comes from the cache as usual.
 - Any shot that is `changed`, `new` or `removed` between the runs is a **determinism failure**: `compare` prints each
-  shot with its pixel count (stderr) and exits **4**; the launcher also exits 4, whatever the verdict of the
+  shot with its pixel count, or "different size" for a resized one (stderr) and exits **4**; the launcher also exits 4, whatever the verdict of the
   real compare was (it is still printed), because a capture that does not repeat says nothing reliable about it.
   The reports (diff images) are in `determinism-<n>/` next to `report/`.
 - Costs `REPEAT - 1` extra captures of the head. `compare --fail-on-diff` (2), `--fail-on-health` (3) and
