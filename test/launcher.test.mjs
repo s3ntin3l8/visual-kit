@@ -198,9 +198,9 @@ describe("launcher baseHarness", { timeout: 60_000 }, () => {
     mkdirSync(path.join(r.dir, "harness/deps"));
     writeFileSync(path.join(r.dir, "harness/deps/marker.txt"), "dep\n");
     writeFileSync(path.join(r.dir, ".gitignore"), "harness/deps\n");
-    spawnSync("git", ["rm", "-rq", "--cached", "harness/deps"], { cwd: r.dir });
     const res = run(r, ["check", "--base", "base"], { env: { ...env, STUB_BASE_DEPS: "harness/deps", STUB_BASE_HARNESS: "harness typo", STUB_DEMO_PREFIX: `cat harness/deps/marker.txt >>${seen} 2>&1;` } });
-    assert.match(seenBy(seen), /^dep$/m, res.out);
+    // The base demo starts first: its line, not the head demo's, shows whether the dependency link survived.
+    assert.equal(seenBy(seen).split("\n")[0], "dep", res.out);
     assert.match(res.out, /baseHarness "typo" matches no file/);
     assert.doesNotMatch(res.out, /baseHarness "harness" matches no file/);
   });

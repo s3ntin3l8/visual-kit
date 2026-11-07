@@ -141,7 +141,8 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
   not git-ignored; a path the working tree lacks is removed from the base) and only the rest comes from the merge
   base. `scenes.json`, `hooks.mjs` and `host-hooks.sh` are already the working tree's. The content of the listed
   paths joins the cache key, so editing the harness recaptures the base and an app edit does not. Repo-relative
-  paths with no spaces, glob characters or leading `-`; not `.` and not `.git`. Default: none, the base is the
+  paths with no spaces, glob characters or leading `-`; not `.` and not `.git`. A listed path that matches no file in the working tree
+  prints a warning on stderr (a typo would otherwise substitute nothing). Default: none, the base is the
   merge base's tree.
 - **Tags** pick the workflows a scene belongs to: `presentation` (README and landing), `check`, `audit`.
   Default `["check", "audit"]`.
