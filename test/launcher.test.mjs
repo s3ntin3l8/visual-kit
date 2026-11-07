@@ -154,6 +154,74 @@ describe("launcher cache key", { timeout: 60_000 }, () => {
   });
 });
 
+describe("launcher baseHarness", { timeout: 60_000 }, () => {
+  // The stub's demo copies what it finds in the harness folder, so the file shows which side's copy the base was rendered with.
+  const setup = (name) => {
+    const r = repo(name);
+    mkdirSync(path.join(r.dir, "harness"));
+    mkdirSync(path.join(r.dir, "app"));
+    writeFileSync(path.join(r.dir, "harness/seed.txt"), "base\n");
+    writeFileSync(path.join(r.dir, "harness/gone.txt"), "only in base\n");
+    writeFileSync(path.join(r.dir, "app/page.txt"), "base app\n");
+    const git = (...a) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: r.dir, encoding: "utf8" });
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    git("branch", "base");
+    // The PR: a harness fix, a new harness file, a removed one and an app change.
+    writeFileSync(path.join(r.dir, "harness/seed.txt"), "head\n");
+    writeFileSync(path.join(r.dir, "harness/new.txt"), "new in head\n");
+    spawnSync("rm", [path.join(r.dir, "harness/gone.txt")]);
+    writeFileSync(path.join(r.dir, "app/page.txt"), "head app\n");
+    const seen = path.join(r.dir, "seen.log");
+    const env = { XDG_CACHE_HOME: path.join(r.dir, "cache"), STUB_DEMO_PREFIX: `{ cat harness/seed.txt app/page.txt harness/new.txt harness/gone.txt; } >>${seen} 2>&1;`, STUB_BASE_HARNESS: "harness" };
+    return { r, env, seen };
+  };
+  const seenBy = (seen) => readFileSync(seen, "utf8");
+
+  test("the base is rendered with the head's copy of the listed paths and the merge base's app", () => {
+    const { r, env, seen } = setup("base-harness");
+    run(r, ["check", "--base", "base"], { env });
+    const first = seenBy(seen).split("\n");
+    // The base demo is the first to start: seed (head's), app (base's), new (head's), gone (absent: removed in head).
+    assert.deepEqual(first.slice(0, 3), ["head", "base app", "new in head"]);
+    assert.match(first[3], /gone\.txt.*No such file/);
+  });
+
+  test("without baseHarness the base is the merge base's tree, harness included", () => {
+    const { r, env, seen } = setup("base-harness-off");
+    run(r, ["check", "--base", "base"], { env: { ...env, STUB_BASE_HARNESS: "" } });
+    assert.deepEqual(seenBy(seen).split("\n").slice(0, 3), ["base", "base app", "cat: harness/new.txt: No such file or directory"]);
+  });
+
+  test("a dependency link inside a listed path survives, and a path that matches nothing is called out", () => {
+    const { r, env, seen } = setup("base-harness-deps");
+    mkdirSync(path.join(r.dir, "harness/deps"));
+    writeFileSync(path.join(r.dir, "harness/deps/marker.txt"), "dep\n");
+    writeFileSync(path.join(r.dir, ".gitignore"), "harness/deps\n");
+    const res = run(r, ["check", "--base", "base"], { env: { ...env, STUB_BASE_DEPS: "harness/deps", STUB_BASE_HARNESS: "harness typo", STUB_DEMO_PREFIX: `cat harness/deps/marker.txt >>${seen} 2>&1;` } });
+    // The base demo starts first: its line, not the head demo's, shows whether the dependency link survived.
+    assert.equal(seenBy(seen).split("\n")[0], "dep", res.out);
+    assert.match(res.out, /baseHarness "typo" matches no file/);
+    assert.doesNotMatch(res.out, /baseHarness "harness" matches no file/);
+  });
+
+  test("an edit to a listed path invalidates the cached base, an unlisted one does not", () => {
+    const { r, env } = setup("base-harness-key");
+    const cacheFor = () => {
+      writeFileSync(r.log, "");
+      run(r, ["check", "--base", "base"], { env });
+      return log(r).match(/-v (\S+\/cache\/visual-kit\/\S+):\/out/)?.[1];
+    };
+    const first = cacheFor();
+    assert.ok(first, log(r));
+    assert.equal(cacheFor(), first, "nothing changed: same key");
+    writeFileSync(path.join(r.dir, "app/page.txt"), "edited app\n");
+    assert.equal(cacheFor(), first, "the app is read from the merge base: its edits do not matter");
+    writeFileSync(path.join(r.dir, "harness/seed.txt"), "edited harness\n");
+    assert.notEqual(cacheFor(), first, "a listed path changed: a new base");
+  });
+});
+
 describe("launcher cache key errors", { timeout: 60_000 }, () => {
   test("a listed file that cannot be read stops the run instead of counting as absent", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
     const r = repo("cache-key-unreadable");

@@ -30,6 +30,11 @@ export function loadConfig(file) {
 function semanticProblems(cfg) {
   const out = [];
   if (cfg.clock !== undefined && Number.isNaN(Date.parse(cfg.clock))) out.push(`clock "${cfg.clock}" is not a date-time (use e.g. 2026-10-01T09:00:00Z)`);
+  for (const p of cfg.baseHarness ?? []) {
+    // The launcher replaces these paths in the base worktree, so none may be the worktree or its git data.
+    const segments = p.split("/");
+    if (segments.includes(".") || segments.includes("") || segments[0] === ".git") out.push(`baseHarness "${p}" must be a path inside the repo: no empty or "." segment, not .git`);
+  }
   const knownViewports = new Set([...Object.values(PROFILES).flatMap((p) => Object.keys(p.viewports)), ...Object.keys(cfg.viewports ?? {})]);
   const seen = new Set();
   cfg.scenes.forEach((scene, i) => {
@@ -70,6 +75,7 @@ export function hostEnv(cfg) {
     `DEMO_TIMEOUT=${q(cfg.demo.startTimeoutSec ?? 300)}`,
     `BASE_DEPS=${q((cfg.baseDeps ?? []).join(" "))}`,
     `CACHE_KEY_FILES=${q((cfg.cacheKeyFiles ?? []).join(" "))}`,
+    `BASE_HARNESS=${q((cfg.baseHarness ?? []).join(" "))}`,
   ];
   for (const [k, v] of Object.entries(cfg.demo.env ?? {})) {
     if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`demo.env key "${k}" is not a valid variable name`);
