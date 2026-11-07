@@ -10,6 +10,7 @@ case " $* " in
   *" compare "*"--fail-on-unstable"*) exit "${STUB_UNSTABLE_RC:-0}" ;; # STUB_UNSTABLE_RC=4 plays a nondeterministic capture
   "image inspect"*) echo sha256:stubimage ;;
   *" capture "*)
+    case "$*" in *"/out/${STUB_FAIL_CAPTURE:-no-such-dir}"*) exit 1 ;; esac # STUB_FAIL_CAPTURE=<dir under /out> makes that capture fail
     if [ -n "${STUB_HOSTCALL-}" ]; then
       dir=$(printf '%s\n' "$@" | sed -n 's#^\(.*\):/hostcall$#\1#p')
       if [ -n "$dir" ]; then

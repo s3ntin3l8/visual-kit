@@ -183,6 +183,21 @@ describe("launcher --repeat", { timeout: 60_000 }, () => {
     assert.doesNotMatch(log(r), /fail-on-unstable|repeat-2/);
   });
 
+  test("an unrelated REPEAT in the environment does not break the other modes", () => {
+    const r = repo("repeat-env");
+    const res = run(r, ["landing", "--out", "out"], { env: env(r, { REPEAT: "yes" }) });
+    assert.doesNotMatch(res.out, /whole number|check mode/);
+    assert.match(run(r, ["check"], { env: env(r, { REPEAT: "yes" }) }).out, /whole number/);
+  });
+
+  test("a scene that fails only on a repeat is not blamed on the first run, and the compare still decides", () => {
+    const r = repo("repeat-fail");
+    // The stub fails every capture into repeat-2 and leaves no shot there.
+    const res = run(r, ["check", "--base", "main", "--repeat", "2"], { env: env(r, { STUB_FAIL_CAPTURE: "repeat-2", STUB_UNSTABLE_RC: "4" }) });
+    assert.equal(res.status, 4, res.out);
+    assert.doesNotMatch(res.out, /failed to render on the working tree/);
+  });
+
   test("a bad count, and --repeat outside check, are refused", () => {
     const r = repo("repeat-bad");
     for (const bad of ["0", "x", "2x", "100", ""]) assert.match(run(r, ["check", "--repeat", bad]).out, /must be a whole number/, bad);

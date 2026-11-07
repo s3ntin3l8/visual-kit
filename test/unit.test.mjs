@@ -454,6 +454,9 @@ test("compare CLI: --fail-on-unstable exits 4 and names each shot that differs b
   assert.match(res.stderr, /gone\.png: only in the first run/);
   assert.match(res.stderr, /extra\.png: only in the second run/);
   assert.equal(cli(["--max-diff-pixels", "100"]).status, 4, "a removed and a new shot still fail");
+  const both = cli(["--fail-on-diff"]);
+  assert.equal(both.status, 4, "the most specific gate wins");
+  assert.match(both.stderr, /determinism failure/);
 });
 
 test("compare: the health verdict counts new console errors and serious axe nodes, never pixels or fixes", () => {

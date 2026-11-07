@@ -82,21 +82,25 @@ async function main() {
       }
       const s = compare({ baseDir: path.resolve(values.base), headDir: path.resolve(values.head), outDir: path.resolve(values.out), baselinesDir: values.baselines && path.resolve(values.baselines), cfg: values.config ? loadConfig(values.config) : undefined, maxDiffPixels, threshold });
       console.log(`visual-kit: ${s.total} compared: ${s.changed} changed, ${s.new} new, ${s.removed} removed, ${s.same} identical`);
-      // --base and --head are two captures of one tree: any shot that is not the same is nondeterminism, not a change.
+      // With --fail-on-unstable, --base and --head are two captures of one tree: any shot that is not the same is
+      // nondeterminism, not a change. Every gate reports; the exit code is the most specific one (4, then 2, then 3).
+      let code = 0;
       if (values["fail-on-unstable"]) {
+        const [first, second] = [path.basename(values.base), path.basename(values.head)];
         const unstable = s.entries.filter((e) => e.result !== "same");
+        // "new" is also a shot whose first capture answered an error status; both mean it did not repeat.
+        const why = (e) => (e.result === "removed" ? `${e.file}: only in ${first}` : e.result === "new" ? `${e.file}: only in ${second} (or ${first} answered an error status)` : `${e.file}: ${e.resized ? "different size" : `${e.pixels} px differ`} between ${first} and ${second} (tolerance ${(e.tolerance ?? { maxDiffPixels: DEFAULT_MAX_DIFF_PIXELS }).maxDiffPixels} px)`);
         if (unstable.length) {
-          const why = (e) => (e.result !== "changed" ? `${e.file}: ${e.result === "new" ? "only in the second run" : "only in the first run"}` : `${e.file}: ${e.resized ? "different size" : `${e.pixels} px differ`} (tolerance ${(e.tolerance ?? { maxDiffPixels: DEFAULT_MAX_DIFF_PIXELS }).maxDiffPixels} px)`);
           console.error(`visual-kit: determinism failure: ${unstable.length} shot(s) differ between two captures of the same tree:\n  - ${unstable.map(why).join("\n  - ")}`);
-          return 4;
+          code = 4;
         }
       }
-      if (values["fail-on-diff"] && (s.changed || s.removed)) return 2;
+      if (values["fail-on-diff"] && (s.changed || s.removed)) code ||= 2;
       if (values["fail-on-health"] && !s.health.ok) {
         console.error(`visual-kit: health gate: ${s.health.entries.length} shot(s) with new findings (${s.health.console} console, ${s.health.axe} axe)`);
-        return 3;
+        code ||= 3;
       }
-      return 0;
+      return code;
     }
     default:
       console.error(USAGE);

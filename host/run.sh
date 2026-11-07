@@ -49,7 +49,7 @@ sha256() {
 MODE=${1:-}; shift || true
 case "$MODE" in landing | readme | audit | check | baseline) ;; *) die "usage: run.sh <landing|readme|audit|check|baseline> [options]" ;; esac
 
-ROUTES="" OUT="" BASE_REF="origin/main" SLUG="" FRESH=0 FORCE=0 REPEAT=${REPEAT:-1}
+ROUTES="" OUT="" BASE_REF="origin/main" SLUG="" FRESH=0 FORCE=0 REPEAT=${REPEAT:-1} REPEAT_FLAG=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --routes) ROUTES=$2; shift 2 ;;
@@ -58,13 +58,16 @@ while [ $# -gt 0 ]; do
     --slug) SLUG=$2; shift 2 ;;
     --fresh) FRESH=1; shift ;;
     --force) FORCE=1; shift ;;
-    --repeat) REPEAT=$2; shift 2 ;;
+    --repeat) REPEAT=$2 REPEAT_FLAG=1; shift 2 ;;
     *) die "unknown option: $1" ;;
   esac
 done
 
-case "$REPEAT" in [1-9] | [1-9][0-9]) ;; *) die "--repeat (REPEAT) must be a whole number from 1 to 99, got \"$REPEAT\"" ;; esac
-[ "$REPEAT" = 1 ] || [ "$MODE" = check ] || die "--repeat is for the check mode"
+# Only check reads REPEAT (like HEALTH_GATE), so an unrelated REPEAT in the environment cannot break the other modes.
+[ "$MODE" = check ] || [ "$REPEAT_FLAG" = 0 ] || die "--repeat is for the check mode"
+if [ "$MODE" = check ]; then
+  case "$REPEAT" in [1-9] | [1-9][0-9]) ;; *) die "--repeat (REPEAT) must be a whole number from 1 to 99, got \"$REPEAT\"" ;; esac
+fi
 IMAGE=${VISUAL_KIT_IMAGE:?VISUAL_KIT_IMAGE is not set}
 if [ -n "${VISUAL_KIT_HOST_NETWORK:-}" ]; then NETWORK=$VISUAL_KIT_HOST_NETWORK
 elif [ "$(uname -s)" = Linux ]; then NETWORK=host
@@ -327,11 +330,12 @@ case "$MODE" in
     stop_demo
     # --repeat N: capture the working tree N-1 more times and hold each against the first run (below).
     rm -rf "$OUT"/repeat-* "$OUT"/determinism-*
+    REPEAT_RC=0
     if [ "$REPEAT" -gt 1 ] && [ "$HEAD_RC" = 0 ]; then
       for i in $(seq 2 "$REPEAT"); do
         echo "visual-kit: capturing the working tree again ($i of $REPEAT, determinism)"
         start_demo "$ROOT"
-        capture check "$OUT/repeat-$i" || HEAD_RC=$?
+        capture check "$OUT/repeat-$i" || REPEAT_RC=$?
         stop_demo
       done
     fi
@@ -364,6 +368,8 @@ case "$MODE" in
       echo "visual-kit: not deterministic: two captures of this tree differ (reports: ${OUT#"$ROOT"/}/determinism-*/index.html)" >&2
       exit 4
     fi
+    # A scene that failed on a repeat only is not a verdict on the first run; if the shots still compared equal, say so.
+    [ "$REPEAT_RC" = 0 ] || die "some scenes failed to render on a repeat capture of the working tree (see above)"
     [ "$COMPARE_RC" = 0 ] || exit "$COMPARE_RC"
     ;;
 esac

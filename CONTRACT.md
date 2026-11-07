@@ -211,7 +211,7 @@ Re-renders of one tree are not byte-identical and a flaky scene shows up only as
   real compare was (it is still printed), because a capture that does not repeat says nothing reliable about it.
   The reports (diff images) are in `determinism-<n>/` next to `report/`.
 - Costs `REPEAT - 1` extra captures of the head. `compare --fail-on-diff` (2), `--fail-on-health` (3) and
-  `--fail-on-unstable` (4) are independent; when several fail, 4 wins.
+  `--fail-on-unstable` (4) are independent: each reports its own finding, and when several fail the exit code is the most specific (4, then 2, then 3). A scene that fails only on a repeat capture is not blamed on the first run: the compare sees its missing shots.
 - Auto-masking the unstable region is not done: the listed shots tell which selector to `mask`.
 
 ### Host hooks
