@@ -101,6 +101,7 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
             "startTimeoutSec": 300, "env": { "DEMO_NOW": "2026-10-01T09:00:00Z" } },
   "baseDeps": [".venv", "frontend/node_modules"],   // symlinked into the base worktree of a check
   "cacheKeyFiles": ["requirements.txt", "frontend/package-lock.json"], // what baseDeps were built from
+  "baseHarness": ["scripts/demo"],                                     // rendered from the head on both sides
   "clock": "2026-10-01T09:00:00Z",                  // fixed browser time; pair with DEMO_NOW
   "mask": [".timestamp"],                           // painted over in every shot
   "maxDiffPixels": 20, "threshold": 0.1,            // pixel tolerance of a check (these are the defaults)
@@ -133,6 +134,15 @@ Validated against [`schema/scenes.schema.json`](schema/scenes.schema.json) (`vis
   does not exist (or is not a regular file) contributes `absent`: that is what makes an optional lockfile safe,
   and why a typo'd path silently stops invalidating the base, so check the spelling. A listed file that cannot be
   read stops the run. (`--fresh` still forces a recapture.)
+- **`baseHarness`**: repo paths (files or folders) the base capture takes from the working tree instead of the
+  merge base. A check renders the base from the merge base's worktree, demo harness included, so a PR that fixes the
+  harness (a proxy bug, a rate limit, a seed) would be compared against the very bug it fixes. List the harness
+  (`scripts/demo`, not the app): the base worktree gets the working tree's copy of each path (tracked and untracked,
+  not git-ignored; a path the working tree lacks is removed from the base) and only the rest comes from the merge
+  base. `scenes.json`, `hooks.mjs` and `host-hooks.sh` are already the working tree's. The content of the listed
+  paths joins the cache key, so editing the harness recaptures the base and an app edit does not. Repo-relative
+  paths with no spaces, glob characters or leading `-`; not `.` and not `.git`. Default: none, the base is the
+  merge base's tree.
 - **Tags** pick the workflows a scene belongs to: `presentation` (README and landing), `check`, `audit`.
   Default `["check", "audit"]`.
 - **`stills`** (default `true`): `false` makes a loop-only scene. It needs `loop` and the `presentation` tag

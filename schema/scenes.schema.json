@@ -29,6 +29,11 @@
       "items": { "type": "string", "pattern": "^(?![/-])(?!.*(^|/)\\.\\.(/|$))[^\\s*?\\[\\]]+$" },
       "description": "Files of the repo (lockfiles, e.g. requirements.txt) whose content is part of the base capture's cache key: the base runs against the working tree's baseDeps, so a change to what they were built from must not reuse an old base. A path that is not a regular file counts as absent."
     },
+    "baseHarness": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(?![/-])(?!.*(^|/)\\.\\.(/|$))[^\\s*?\\[\\]]+$" },
+      "description": "Repo paths (files or folders, e.g. scripts/demo) the base capture takes from the working tree instead of the merge base: the demo harness that renders both sides, so a PR that fixes it is not compared against its own bug. Only the rest of the tree (the app) comes from the merge base."
+    },
     "hostTimeoutSec": { "type": "integer", "minimum": 1, "maximum": 600, "default": 30, "description": "How long a hooks.mjs call to host(name, ...) waits for visual/host-hooks.sh to answer." },
     "clock": { "type": "string", "description": "Fixed browser time (Date.now / new Date). Pair it with the demo's own DEMO_NOW." },
     "maxDiffPixels": { "type": "integer", "minimum": 0, "default": 20, "description": "How many pixels may differ before a shot counts as changed in `check`. Top level for every scene; a scene's own value wins." },
