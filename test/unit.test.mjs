@@ -547,3 +547,16 @@ test("capture: a failing step names its action and selector, and the Playwright 
   });
   assert.deepEqual(failureDetail(new Error("one line")), []);
 });
+
+test("capture: a step's value is never named, and a long call log is cut with a marker", async () => {
+  const page = { fill: async () => { throw new Error("page.fill: Timeout 15000ms exceeded."); } };
+  await assert.rejects(runStep(page, { value: "secret", fill: "#name" }), (err) => {
+    assert.match(err.message, /^step fill "#name": /);
+    assert.doesNotMatch(err.message, /secret/);
+    return true;
+  });
+  const long = new Error(["head", ...Array.from({ length: 25 }, (_, i) => `  - line ${i}`)].join("\n"));
+  const detail = failureDetail(long);
+  assert.equal(detail.length, 21);
+  assert.equal(detail.at(-1), "... 5 more");
+});

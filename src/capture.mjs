@@ -40,9 +40,10 @@ export async function runStep(page, step) {
   }
 }
 
-/** Playwright's call log (why the action waited) sits below the first line of its message; keep a bounded tail of it. */
+/** Playwright's call log (why the action waited) sits below the first line of its message; keep its first `max` lines and mark a cut. */
 export function failureDetail(err, max = 20) {
-  return String(err.message).split("\n").slice(1).filter((l) => l.trim()).slice(0, max);
+  const lines = String(err.message).split("\n").slice(1).filter((l) => l.trim());
+  return lines.length > max ? [...lines.slice(0, max), `... ${lines.length - max} more`] : lines;
 }
 
 /** Generic readiness: fonts painted, nothing marked busy, the network quiet. The app's hook adds its own. */
@@ -241,6 +242,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
         } catch (err) {
           failures.push(`${scene.name} loop: ${String(err.message).split("\n")[0]}`);
           log(`  FAIL ${scene.name} loop: ${String(err.message).split("\n")[0]}`);
+          for (const line of failureDetail(err)) log(`       ${line.trim()}`);
         }
       }
     }
