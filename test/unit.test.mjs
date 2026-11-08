@@ -9,7 +9,7 @@ import { compare, diffPngs } from "../src/compare.mjs";
 import { padRect } from "../src/clip.mjs";
 import { hostEnv, loadConfig } from "../src/config.mjs";
 import { lastChangeSeconds, loopEnd } from "../src/freeze.mjs";
-import { capture, sceneUrl } from "../src/capture.mjs";
+import { capture, failureDetail, runStep, sceneUrl } from "../src/capture.mjs";
 import { createHost } from "../src/hostcall.mjs";
 import { PROFILES, selectScenes, variants } from "../src/profiles.mjs";
 import * as provenance from "../src/provenance.mjs";
@@ -535,4 +535,28 @@ test("validate: maxDiffPixels must be a non-negative integer, threshold a number
     assert.throws(() => loadConfig(config(bad)), /maxDiffPixels|threshold/, JSON.stringify(bad));
     assert.throws(() => loadConfig(config({ scenes: [{ name: "a", path: "/", ...bad }] })), /maxDiffPixels|threshold/, JSON.stringify(bad));
   }
+});
+
+test("capture: a failing step names its action and selector, and the Playwright call log is kept", async () => {
+  const timeout = Object.assign(new Error('page.click: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator(\'text="x"\')\n  - element is not visible'));
+  const page = { click: async () => { throw timeout; } };
+  await assert.rejects(runStep(page, { click: 'text="x"' }), (err) => {
+    assert.match(err.message.split("\n")[0], /^step click "text=\\"x\\"": page\.click: Timeout 15000ms exceeded\.$/);
+    assert.deepEqual(failureDetail(err), ["Call log:", `- waiting for locator('text="x"')`, "- element is not visible"].map((l) => (l.startsWith("-") ? `  ${l}` : l)));
+    return true;
+  });
+  assert.deepEqual(failureDetail(new Error("one line")), []);
+});
+
+test("capture: a step's value is never named, and a long call log is cut with a marker", async () => {
+  const page = { fill: async () => { throw new Error("page.fill: Timeout 15000ms exceeded."); } };
+  await assert.rejects(runStep(page, { value: "secret", fill: "#name" }), (err) => {
+    assert.match(err.message, /^step fill "#name": /);
+    assert.doesNotMatch(err.message, /secret/);
+    return true;
+  });
+  const long = new Error(["head", ...Array.from({ length: 25 }, (_, i) => `  - line ${i}`)].join("\n"));
+  const detail = failureDetail(long);
+  assert.equal(detail.length, 21);
+  assert.equal(detail.at(-1), "... 5 more");
 });

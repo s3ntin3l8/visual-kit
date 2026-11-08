@@ -20,13 +20,30 @@ const NORMAL_MOTION_STYLE = `
   *, *::before, *::after { caret-color: transparent !important; }
 `;
 
-async function runStep(page, step) {
+async function doStep(page, step) {
   if ("click" in step) await page.click(step.click);
   else if ("hover" in step) await page.hover(step.hover);
   else if ("fill" in step) await page.fill(step.fill, step.value);
   else if ("press" in step) await page.keyboard.press(step.press);
   else if ("waitFor" in step) await page.waitForSelector(step.waitFor, { state: "visible" });
   else await page.waitForTimeout(step.wait);
+}
+
+/** Runs one scene step; a failure names the step, so "Timeout 15000ms exceeded" says which selector it was. */
+export async function runStep(page, step) {
+  try {
+    await doStep(page, step);
+  } catch (err) {
+    const action = Object.keys(step).find((k) => k !== "value");
+    err.message = `step ${action} ${JSON.stringify(step[action])}: ${err.message}`;
+    throw err;
+  }
+}
+
+/** Playwright's call log (why the action waited) sits below the first line of its message; keep its first `max` lines and mark a cut. */
+export function failureDetail(err, max = 20) {
+  const lines = String(err.message).split("\n").slice(1).filter((l) => l.trim());
+  return lines.length > max ? [...lines.slice(0, max), `... ${lines.length - max} more`] : lines;
 }
 
 /** Generic readiness: fonts painted, nothing marked busy, the network quiet. The app's hook adds its own. */
@@ -213,6 +230,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
           delete metrics[variant.file];
           failures.push(`${label}: ${String(err.message).split("\n")[0]}`);
           log(`  FAIL ${label}: ${String(err.message).split("\n")[0]}`);
+          for (const line of failureDetail(err)) log(`       ${line.trim()}`);
         } finally {
           await context.close();
         }
@@ -224,6 +242,7 @@ export async function capture({ cfg, profile: profileName, baseUrl, outDir, rout
         } catch (err) {
           failures.push(`${scene.name} loop: ${String(err.message).split("\n")[0]}`);
           log(`  FAIL ${scene.name} loop: ${String(err.message).split("\n")[0]}`);
+          for (const line of failureDetail(err)) log(`       ${line.trim()}`);
         }
       }
     }
