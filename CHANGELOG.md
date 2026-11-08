@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/s3ntin3l8/visual-kit/compare/visual-kit-v0.4.0...visual-kit-v0.4.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **capture:** a failing step names its action and selector and keeps Playwright's call log ([#42](https://github.com/s3ntin3l8/visual-kit/issues/42)) ([61c33f6](https://github.com/s3ntin3l8/visual-kit/commit/61c33f6874fa3ddbc99c609296fceacc72b225b3))
+
 ## [0.4.0](https://github.com/s3ntin3l8/visual-kit/compare/visual-kit-v0.3.0...visual-kit-v0.4.0) (2026-11-07)
 
 
