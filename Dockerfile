@@ -1,5 +1,5 @@
 # The Playwright version must match package.json: the image ships the matching browsers.
-FROM mcr.microsoft.com/playwright:v1.64.1-noble
+FROM mcr.microsoft.com/playwright:v1.65.0-noble
 
 # ffmpeg encodes the loops; the emoji font keeps emoji from rendering as boxes. Fonts are part
 # of the pinned rendering, so add them here, not in the host.
